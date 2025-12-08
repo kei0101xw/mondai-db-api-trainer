@@ -1,1 +1,1 @@
-# mondai-db-api-trainer
+# mondAI
