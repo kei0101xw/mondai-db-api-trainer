@@ -1,0 +1,10 @@
+# リポジトリルートへ移動
+cd "$(dirname -- "$0")/.." || exit 1
+
+echo "🔍 Running lint-staged for frontend..."
+npm run lint-staged || exit 1
+
+echo "🐍 Running Ruff for backend..."
+cd backend || exit 1
+uv run ruff format || exit 1
+uv run ruff check || exit 1

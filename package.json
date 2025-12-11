@@ -1,0 +1,37 @@
+{
+  "name": "mondai-db-api-trainer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky install",
+    "lint-staged": "lint-staged"
+  },
+  "lint-staged": {
+    "frontend/src/**/*.{ts,tsx,js,jsx}": [
+      "npx --prefix frontend eslint --config frontend/eslint.config.js --fix",
+      "npx --prefix frontend prettier --write"
+    ],
+    "frontend/**/*.{json,md,yml,yaml}": [
+      "npx --prefix frontend prettier --write"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kei0101xw/mondai-db-api-trainer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kei0101xw/mondai-db-api-trainer/issues"
+  },
+  "homepage": "https://github.com/kei0101xw/mondai-db-api-trainer#readme",
+  "devDependencies": {
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7"
+  }
+}

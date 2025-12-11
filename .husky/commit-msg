@@ -1,0 +1,4 @@
+# リポジトリルートへ移動
+cd "$(dirname -- "$0")/.." || exit 1
+
+npx commitlint --edit "$1"
