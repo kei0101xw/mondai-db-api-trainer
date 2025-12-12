@@ -1,3 +1,6 @@
+# VSCode(GUI) でも Homebrew のコマンド(uv等)が見つかるように PATH を補強
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # リポジトリルートへ移動
 cd "$(dirname -- "$0")/.." || exit 1
 
