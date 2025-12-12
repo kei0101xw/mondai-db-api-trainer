@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Third-party apps
+    "rest_framework",
 ]
 
 MIDDLEWARE = [
@@ -129,3 +131,25 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ========================================
+# Django REST Framework
+# ========================================
+REST_FRAMEWORK = {
+    # カスタム例外ハンドラー（統一レスポンス形式）
+    "EXCEPTION_HANDLER": "common.exception_handlers.custom_exception_handler",
+    # デフォルトのレンダラー
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
+    # デフォルトのパーサー
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+    ],
+    # セッション認証を使用
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    # デフォルトはパーミッションチェックなし（各Viewで個別に設定）
+    "DEFAULT_PERMISSION_CLASSES": [],
+}
