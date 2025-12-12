@@ -1,0 +1,11 @@
+/* ヘッダー全体 */
+.header {
+  background-color: #cecece;
+  color: #fff;
+  height: 50px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
