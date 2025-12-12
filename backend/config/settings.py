@@ -194,3 +194,29 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",  # CSRFトークン用
     "x-requested-with",
 ]
+
+# ========================================
+# CSRF (Cross-Site Request Forgery) Protection
+# ========================================
+# SPAからのリクエストに対応するためのCSRF設定
+
+# CSRF Cookieの名前
+CSRF_COOKIE_NAME = "csrftoken"
+
+# CSRF CookieをHTTPSでのみ送信（本番環境）
+CSRF_COOKIE_SECURE = not DEBUG
+
+# CSRF Cookieを同一サイトからのみ送信（SameSite属性）
+# "Lax"は通常のGETリクエストでCookieを送信、POSTでは送信しない
+# SPAの場合は"None"にしてcredentials: "include"と併用する必要がある
+CSRF_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+
+# CSRF CookieをJavaScriptから読み取り可能にする（フロントエンドでトークン取得用）
+CSRF_COOKIE_HTTPONLY = False
+
+# 信頼するオリジン（CSRF検証用）
+# CORS_ALLOWED_ORIGINSと同じ値を使用
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+
+# CSRFトークンのヘッダー名（デフォルトは"X-CSRFToken"）
+CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
