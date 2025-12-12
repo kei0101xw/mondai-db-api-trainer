@@ -42,9 +42,7 @@ class AppException(Exception):
 class ValidationError(AppException):
     """バリデーションエラー."""
 
-    def __init__(
-        self, message: str | None = None, details: Any = None
-    ) -> None:
+    def __init__(self, message: str | None = None, details: Any = None) -> None:
         """バリデーションエラーを初期化する.
 
         Args:

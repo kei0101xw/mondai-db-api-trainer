@@ -75,9 +75,7 @@ def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Respons
     )
 
 
-def _handle_drf_exception(
-    exc: Exception, response: Response
-) -> Response:
+def _handle_drf_exception(exc: Exception, response: Response) -> Response:
     """DRFの標準例外を統一形式に変換する.
 
     Args:
