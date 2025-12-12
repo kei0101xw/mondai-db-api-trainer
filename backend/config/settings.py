@@ -43,10 +43,12 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party apps
     "rest_framework",
+    "corsheaders",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # CORS処理（SessionMiddlewareより前に配置）
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -153,3 +155,42 @@ REST_FRAMEWORK = {
     # デフォルトはパーミッションチェックなし（各Viewで個別に設定）
     "DEFAULT_PERMISSION_CLASSES": [],
 }
+
+# ========================================
+# CORS (Cross-Origin Resource Sharing)
+# ========================================
+# フロントエンドからのcredentials: "include"リクエストに対応するための設定
+
+# 許可するオリジン（環境変数で設定、カンマ区切り）
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
+).split(",")
+
+# クッキー（credentials）を含むリクエストを許可
+CORS_ALLOW_CREDENTIALS = True
+
+# プリフライトリクエストの結果をキャッシュする時間（秒）
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24時間
+
+# 許可するHTTPメソッド
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+
+# 許可するHTTPヘッダー
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",  # CSRFトークン用
+    "x-requested-with",
+]
