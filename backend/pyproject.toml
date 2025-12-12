@@ -8,6 +8,7 @@ dependencies = [
     "django>=4.2.27",
     "django-cors-headers>=4.9.0",
     "djangorestframework>=3.16.1",
+    "google-genai>=1.47.0",
     "psycopg[binary]>=3.2.13",
     "python-dotenv>=1.2.1",
     "ruff>=0.14.8",
