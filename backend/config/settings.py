@@ -220,3 +220,34 @@ CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
 # CSRFトークンのヘッダー名（デフォルトは"X-CSRFToken"）
 CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
+
+# ========================================
+# Session Settings
+# ========================================
+# SPAからのcredentials: "include"に対応したセッション管理設定
+
+# セッションCookieの名前
+SESSION_COOKIE_NAME = "sessionid"
+
+# セッションCookieをHTTPSでのみ送信（本番環境）
+SESSION_COOKIE_SECURE = not DEBUG
+
+# セッションCookieを同一サイトからのみ送信（SameSite属性）
+# SPAの場合は"None"にしてcredentials: "include"と併用する必要がある
+SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+
+# セッションCookieをJavaScriptから読み取り不可にする（セキュリティ強化）
+SESSION_COOKIE_HTTPONLY = True
+
+# セッションCookieの有効期間（秒）
+# 2週間（1209600秒）
+SESSION_COOKIE_AGE = 1209600
+
+# ブラウザを閉じてもセッションを保持する
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
+# セッションの保存先（デフォルトはデータベース）
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+
+# セッションをリクエストごとに保存する（アクティビティ検知用）
+SESSION_SAVE_EVERY_REQUEST = False
