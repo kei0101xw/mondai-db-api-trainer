@@ -129,11 +129,22 @@ class ProblemGenerator:
             raise ProblemGeneratorError("problems が配列ではありません")
 
         # モードに応じた問題数チェック
-        expected_count = 1 if mode in ["db_only", "api_only"] else 2
-        if len(data["problems"]) != expected_count:
-            raise ProblemGeneratorError(
-                f"問題数が不正です（期待: {expected_count}, 実際: {len(data['problems'])}）"
-            )
+        problem_count = len(data["problems"])
+        if mode == "db_only":
+            if problem_count != 1:
+                raise ProblemGeneratorError(
+                    f"問題数が不正です（期待: 1, 実際: {problem_count}）"
+                )
+        elif mode == "api_only":
+            if problem_count < 1:
+                raise ProblemGeneratorError(
+                    f"問題数が不正です（期待: 1問以上, 実際: {problem_count}）"
+                )
+        elif mode == "both":
+            if problem_count < 2:
+                raise ProblemGeneratorError(
+                    f"問題数が不正です（期待: 2問以上, 実際: {problem_count}）"
+                )
 
         # 各問題のバリデーション
         for idx, problem in enumerate(data["problems"], start=1):
@@ -154,6 +165,47 @@ class ProblemGenerator:
             if problem["problem_type"] not in ["db", "api"]:
                 raise ProblemGeneratorError(
                     f"問題{idx}: problem_type が不正です（{problem['problem_type']}）"
+                )
+
+        # モードと problem_type の整合性チェック
+        problem_types = [p["problem_type"] for p in data["problems"]]
+
+        if mode == "db_only":
+            if not all(pt == "db" for pt in problem_types):
+                raise ProblemGeneratorError(
+                    f"mode=db_only ではすべて DB 設計問題である必要があります（実際: {problem_types}）"
+                )
+        elif mode == "api_only":
+            if not all(pt == "api" for pt in problem_types):
+                raise ProblemGeneratorError(
+                    f"mode=api_only ではすべて API 設計問題である必要があります（実際: {problem_types}）"
+                )
+        elif mode == "both":
+            # DB設計1問 + API設計1問以上を期待（順序: DB → API）
+            if problem_types[0] != "db":
+                raise ProblemGeneratorError(
+                    f"mode=both では最初の問題は DB 設計である必要があります（実際: {problem_types[0]}）"
+                )
+
+            # DB問題の数をカウント
+            db_count = problem_types.count("db")
+            api_count = problem_types.count("api")
+
+            if db_count != 1:
+                raise ProblemGeneratorError(
+                    f"mode=both では DB 設計問題は1問である必要があります（実際: {db_count}問）"
+                )
+
+            if api_count < 1:
+                raise ProblemGeneratorError(
+                    f"mode=both では API 設計問題は1問以上必要です（実際: {api_count}問）"
+                )
+
+            # すべてのAPI問題がDB問題より後に配置されているか確認
+            first_api_index = problem_types.index("api")
+            if first_api_index == 0:
+                raise ProblemGeneratorError(
+                    "mode=both では DB 設計問題を最初に配置する必要があります"
                 )
 
     @transaction.atomic
