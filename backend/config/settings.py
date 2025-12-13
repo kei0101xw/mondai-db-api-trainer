@@ -93,6 +93,9 @@ DATABASES = {
         "PASSWORD": os.getenv("DB_PASSWORD"),
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
+        "CONN_MAX_AGE": 0,  # プール相性のため毎回切断寄り
+        "DISABLE_SERVER_SIDE_CURSORS": True,
+        "OPTIONS": {"sslmode": "require"},
     }
 }
 
