@@ -173,7 +173,20 @@ REST_FRAMEWORK = {
 # フロントエンドからのcredentials: "include"リクエストに対応するための設定
 
 # 許可するオリジン（環境変数で設定）
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS").split(",")
+cors_origins_env = os.environ.get("CORS_ALLOWED_ORIGINS")
+if not cors_origins_env:
+    if not DEBUG:
+        raise RuntimeError(
+            "CORS_ALLOWED_ORIGINS must be set in production. "
+            "Example: CORS_ALLOWED_ORIGINS=https://app.example.com,https://www.example.com"
+        )
+    # Development: Allow empty list (CORS will reject all origins unless explicitly configured)
+    CORS_ALLOWED_ORIGINS = []
+else:
+    # Split by comma and strip whitespace from each origin
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip() for origin in cors_origins_env.split(",") if origin.strip()
+    ]
 
 # クッキー（credentials）を含むリクエストを許可
 CORS_ALLOW_CREDENTIALS = True
