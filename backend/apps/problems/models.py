@@ -96,3 +96,46 @@ class Problem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.problem_group.title} - {self.order_index} ({self.problem_type})"
+
+
+class Answer(models.Model):
+    """
+    小問に対する回答
+    """
+
+    class Grade(models.IntegerChoices):
+        INCORRECT = 0, "×"
+        PARTIAL = 1, "△"
+        CORRECT = 2, "○"
+
+    answer_id = models.BigAutoField(primary_key=True, verbose_name="回答ID")
+    problem = models.ForeignKey(
+        Problem,
+        on_delete=models.CASCADE,
+        related_name="answers",
+        verbose_name="問題",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="answers",
+        verbose_name="ユーザー",
+    )
+    answer_body = models.TextField(verbose_name="回答本文")
+    grade = models.IntegerField(
+        choices=Grade.choices,
+        verbose_name="採点結果",
+        help_text="0:×, 1:△, 2:○",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        db_table = "answers"
+        verbose_name = "回答"
+        verbose_name_plural = "回答"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        grade_display = self.get_grade_display()
+        return f"{self.user.name} - {self.problem} ({grade_display})"
