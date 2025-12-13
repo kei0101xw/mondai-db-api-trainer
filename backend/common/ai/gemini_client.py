@@ -66,29 +66,12 @@ class GeminiClient:
 
             config = types.GenerateContentConfig(**config_params)
 
-            # タイムアウトを適用してAPI呼び出し
-            # Note: Google GenAI SDKのタイムアウトはrequestレベルで制御
-            import signal
-
-            def timeout_handler(signum, frame):
-                raise TimeoutError(
-                    f"Gemini API呼び出しが{timeout}秒でタイムアウトしました"
-                )
-
-            # タイムアウト設定（Unix系のみ）
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(timeout)
-
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=config,
-                )
-            finally:
-                # タイムアウトをキャンセル
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+            # API呼び出し（タイムアウトはSDKレベルでは制御できないため、signalを使わない）
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=config,
+            )
 
             if not response.text:
                 raise GeminiClientError("生成されたテキストが空です")
