@@ -4,7 +4,7 @@
 各例外はエラーコードと紐付き、グローバル例外ハンドラーで統一レスポンスに変換されます。
 """
 
-from typing import Any
+from typing import Any, Optional
 
 from rest_framework import status
 
@@ -20,7 +20,7 @@ class AppException(Exception):
     def __init__(
         self,
         error_code: ErrorCode,
-        message: str | None = None,
+        message: Optional[str] = None,
         details: Any = None,
         status_code: int = status.HTTP_400_BAD_REQUEST,
     ) -> None:
@@ -42,7 +42,7 @@ class AppException(Exception):
 class ValidationError(AppException):
     """バリデーションエラー."""
 
-    def __init__(self, message: str | None = None, details: Any = None) -> None:
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
         """バリデーションエラーを初期化する.
 
         Args:
@@ -60,7 +60,7 @@ class ValidationError(AppException):
 class UnauthorizedError(AppException):
     """認証エラー（未ログイン）."""
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: Optional[str] = None) -> None:
         """認証エラーを初期化する.
 
         Args:
@@ -76,7 +76,7 @@ class UnauthorizedError(AppException):
 class ForbiddenError(AppException):
     """認可エラー（権限不足）."""
 
-    def __init__(self, message: str | None = None, details: Any = None) -> None:
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
         """認可エラーを初期化する.
 
         Args:
@@ -97,7 +97,7 @@ class NotFoundError(AppException):
     def __init__(
         self,
         error_code: ErrorCode = ErrorCode.NOT_FOUND,
-        message: str | None = None,
+        message: Optional[str] = None,
     ) -> None:
         """リソース未検出エラーを初期化する.
 
@@ -115,7 +115,7 @@ class NotFoundError(AppException):
 class InvalidCredentialsError(AppException):
     """認証情報エラー（メール・パスワード不一致等）."""
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: Optional[str] = None) -> None:
         """認証情報エラーを初期化する.
 
         Args:
@@ -131,7 +131,7 @@ class InvalidCredentialsError(AppException):
 class EmailAlreadyExistsError(AppException):
     """メールアドレス重複エラー."""
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: Optional[str] = None) -> None:
         """メールアドレス重複エラーを初期化する.
 
         Args:
@@ -147,7 +147,7 @@ class EmailAlreadyExistsError(AppException):
 class GuestLimitReachedError(AppException):
     """ゲストユーザー利用制限エラー."""
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: Optional[str] = None) -> None:
         """ゲスト利用制限エラーを初期化する.
 
         Args:
@@ -163,7 +163,7 @@ class GuestLimitReachedError(AppException):
 class GuestAlreadyGeneratedError(AppException):
     """ゲストユーザー問題生成済みエラー."""
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: Optional[str] = None) -> None:
         """ゲスト問題生成済みエラーを初期化する.
 
         Args:
@@ -179,7 +179,7 @@ class GuestAlreadyGeneratedError(AppException):
 class GuestTokenInvalidError(AppException):
     """ゲストトークン無効エラー."""
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: Optional[str] = None) -> None:
         """ゲストトークン無効エラーを初期化する.
 
         Args:
@@ -195,7 +195,7 @@ class GuestTokenInvalidError(AppException):
 class AIGenerationFailedError(AppException):
     """AI問題生成失敗エラー."""
 
-    def __init__(self, message: str | None = None, details: Any = None) -> None:
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
         """AI問題生成失敗エラーを初期化する.
 
         Args:
@@ -213,7 +213,7 @@ class AIGenerationFailedError(AppException):
 class AIGradingFailedError(AppException):
     """AI採点失敗エラー."""
 
-    def __init__(self, message: str | None = None, details: Any = None) -> None:
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
         """AI採点失敗エラーを初期化する.
 
         Args:

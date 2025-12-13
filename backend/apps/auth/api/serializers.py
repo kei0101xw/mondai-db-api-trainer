@@ -5,8 +5,6 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.auth.models import User
-from common.error_codes import ErrorCode
-from common.exceptions import ValidationError
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -63,10 +61,8 @@ class UserRegisterSerializer(serializers.Serializer):
 
         # 重複チェック
         if User.objects.filter(email=normalized_email).exists():
-            raise ValidationError(
-                error_code=ErrorCode.EMAIL_ALREADY_EXISTS,
-                message="このメールアドレスは既に登録されています",
-                details={"field": "email", "value": normalized_email},
+            raise serializers.ValidationError(
+                "このメールアドレスは既に登録されています"
             )
 
         return normalized_email
@@ -92,11 +88,7 @@ class UserRegisterSerializer(serializers.Serializer):
             validate_password(value)
         except DjangoValidationError as e:
             # Djangoのバリデーションエラーを統一形式に変換
-            raise ValidationError(
-                error_code=ErrorCode.VALIDATION_ERROR,
-                message="パスワードが要件を満たしていません",
-                details={"field": "password", "errors": list(e.messages)},
-            )
+            raise serializers.ValidationError(list(e.messages))
 
         return value
 
