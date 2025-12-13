@@ -328,7 +328,9 @@ class GradeAnswerView(APIView):
         """
         # 問題を取得
         try:
-            problem = Problem.objects.select_related("problem_group").get(id=problem_id)
+            problem = Problem.objects.select_related("problem_group").get(
+                problem_id=problem_id
+            )
         except Problem.DoesNotExist:
             return Response(
                 {

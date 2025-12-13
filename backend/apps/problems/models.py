@@ -24,6 +24,9 @@ class ProblemGroup(models.Model):
         API_ONLY = "api_only", "API Only"
         BOTH = "both", "Both"
 
+    problem_group_id = models.BigAutoField(
+        primary_key=True, verbose_name="問題グループID"
+    )
     title = models.CharField(max_length=255, verbose_name="タイトル")
     description = models.TextField(verbose_name="説明")
     difficulty = models.CharField(
@@ -71,6 +74,7 @@ class Problem(models.Model):
         DB = "db", "DB Design"
         API = "api", "API Design"
 
+    problem_id = models.BigAutoField(primary_key=True, verbose_name="問題ID")
     problem_group = models.ForeignKey(
         ProblemGroup,
         on_delete=models.CASCADE,

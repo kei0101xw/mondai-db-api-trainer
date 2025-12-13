@@ -291,7 +291,7 @@ class ProblemGenerator:
         response_data = {
             "kind": "persisted",
             "problem_group": {
-                "problem_group_id": problem_group.id,
+                "problem_group_id": problem_group.problem_group_id,
                 "title": problem_group.title,
                 "description": problem_group.description,
                 "difficulty": problem_group.difficulty,
@@ -301,8 +301,8 @@ class ProblemGenerator:
             },
             "problems": [
                 {
-                    "problem_id": p.id,
-                    "problem_group_id": problem_group.id,
+                    "problem_id": p.problem_id,
+                    "problem_group_id": problem_group.problem_group_id,
                     "problem_type": p.problem_type,
                     "order_index": p.order_index,
                     "problem_body": p.problem_body,
