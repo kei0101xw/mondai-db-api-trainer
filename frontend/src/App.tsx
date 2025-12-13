@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './contexts';
 import Header from './components/Header/Header';
 import Home from './pages/Home/Home';
 import Solve from './pages/Solve/Solve';
@@ -7,7 +8,7 @@ import RegisterUser from './pages/RegisterUser/RegisterUser';
 
 function App() {
   return (
-    <>
+    <AuthProvider>
       <Header />
       <Routes>
         <Route path="/" element={<Home />} />
@@ -15,7 +16,7 @@ function App() {
         <Route path="/login" element={<LoginUser />} />
         <Route path="/register" element={<RegisterUser />} />
       </Routes>
-    </>
+    </AuthProvider>
   );
 }
 
