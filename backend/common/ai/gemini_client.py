@@ -35,6 +35,7 @@ class GeminiClient:
         temperature: float = 1.0,
         max_output_tokens: Optional[int] = None,
         response_format: Optional[str] = None,
+        timeout: int = 60,
     ) -> str:
         """
         テキストを生成する
@@ -44,6 +45,7 @@ class GeminiClient:
             temperature: 生成のランダム性（0.0〜2.0）
             max_output_tokens: 最大トークン数
             response_format: レスポンスフォーマット（例: "application/json"）
+            timeout: タイムアウト時間（秒）デフォルト60秒
 
         Returns:
             生成されたテキスト
@@ -64,11 +66,29 @@ class GeminiClient:
 
             config = types.GenerateContentConfig(**config_params)
 
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
+            # タイムアウトを適用してAPI呼び出し
+            # Note: Google GenAI SDKのタイムアウトはrequestレベルで制御
+            import signal
+
+            def timeout_handler(signum, frame):
+                raise TimeoutError(
+                    f"Gemini API呼び出しが{timeout}秒でタイムアウトしました"
+                )
+
+            # タイムアウト設定（Unix系のみ）
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(timeout)
+
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=config,
+                )
+            finally:
+                # タイムアウトをキャンセル
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
 
             if not response.text:
                 raise GeminiClientError("生成されたテキストが空です")

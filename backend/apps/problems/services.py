@@ -1,5 +1,6 @@
 import json
 import secrets
+import unicodedata
 from typing import Any, TypedDict, Optional, List, Tuple, Dict
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -96,9 +97,10 @@ class ProblemGenerator:
         except GeminiClientError as e:
             raise ProblemGeneratorError(f"Gemini API呼び出しエラー: {e}") from e
 
-        # JSONパース
+        # JSONパース（前処理付き）
         try:
-            generated_data: GeneratedProblemGroup = json.loads(response_text)
+            json_str = self._extract_json_from_response(response_text)
+            generated_data: GeneratedProblemGroup = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise ProblemGeneratorError(f"JSONパースエラー: {e}") from e
 
@@ -122,6 +124,26 @@ class ProblemGenerator:
             app_scale=app_scale,
             mode=mode,
         )
+
+    @staticmethod
+    def _extract_json_from_response(response_text: str) -> str:
+        """
+        Geminiレスポンスから JSON部分を抽出する
+
+        Args:
+            response_text: Gemini APIからのレスポンステキスト
+
+        Returns:
+            JSON文字列
+        """
+        # バッククォートで囲まれている場合を処理
+        if response_text.strip().startswith("```"):
+            # ```json から ``` までを抽出
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            if start != -1 and end > start:
+                return response_text[start:end]
+        return response_text.strip()
 
     def _validate_generated_data(self, data: GeneratedProblemGroup, mode: str) -> None:
         """
@@ -365,6 +387,9 @@ class AnswerGrader:
         Raises:
             AnswerGraderError: 採点に失敗した場合
         """
+        # 入力サニタイゼーション
+        answer_body = self._sanitize_answer(answer_body)
+
         # プロンプト構築
         prompt = build_grading_prompt(problem_type, problem_body, answer_body)
 
@@ -378,9 +403,10 @@ class AnswerGrader:
         except GeminiClientError as e:
             raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
 
-        # JSONパース
+        # JSONパース（前処理付き）
         try:
-            grading_result: GradingResult = json.loads(response_text)
+            json_str = self._extract_json_from_response(response_text)
+            grading_result: GradingResult = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise AnswerGraderError(f"JSONパースエラー: {e}") from e
 
@@ -394,6 +420,49 @@ class AnswerGrader:
         self._validate_grading_result(grading_result)
 
         return grading_result
+
+    @staticmethod
+    def _sanitize_answer(text: str) -> str:
+        """
+        ユーザー入力をサニタイズする
+
+        Args:
+            text: ユーザーの回答テキスト
+
+        Returns:
+            サニタイズされたテキスト
+        """
+        # NFC正規化（合字を分解）
+        text = unicodedata.normalize("NFC", text)
+
+        # 制御文字の除去（改行・タブ以外）
+        cleaned = []
+        for char in text:
+            if ord(char) < 32 and char not in "\n\t":
+                continue
+            cleaned.append(char)
+
+        return "".join(cleaned)
+
+    @staticmethod
+    def _extract_json_from_response(response_text: str) -> str:
+        """
+        Geminiレスポンスから JSON部分を抽出する
+
+        Args:
+            response_text: Gemini APIからのレスポンステキスト
+
+        Returns:
+            JSON文字列
+        """
+        # バッククォートで囲まれている場合を処理
+        if response_text.strip().startswith("```"):
+            # ```json から ``` までを抽出
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            if start != -1 and end > start:
+                return response_text[start:end]
+        return response_text.strip()
 
     def _validate_grading_result(self, result: GradingResult) -> None:
         """

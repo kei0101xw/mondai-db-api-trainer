@@ -14,6 +14,9 @@ from .services import (
 )
 from .models import Problem, Answer
 
+# answer_body の長さ制限（約10KB）
+MAX_ANSWER_BODY_LENGTH = 10000
+
 
 class GenerateProblemView(APIView):
     """
@@ -211,6 +214,20 @@ class GradeAnswerView(APIView):
                     "error": {
                         "code": "MISSING_ANSWER_BODY",
                         "message": "answer_body は必須です",
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # answer_body 長さチェック
+        if len(answer_body) > MAX_ANSWER_BODY_LENGTH:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "ANSWER_BODY_TOO_LONG",
+                        "message": f"回答は{MAX_ANSWER_BODY_LENGTH}文字以下である必要があります",
                         "details": None,
                     },
                 },
