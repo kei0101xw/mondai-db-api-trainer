@@ -7,14 +7,14 @@ DRF（Django REST Framework）のバリデーションエラーを
 from typing import Any
 
 
-def format_validation_errors(errors: dict[str, Any]) -> dict[str, list[str]]:
+def format_validation_errors(errors: Any) -> dict[str, list[str]]:
     """DRFのバリデーションエラーを整形する.
 
     DRFのserializer.errorsは様々な形式のエラーを返すため、
     フロントエンドで扱いやすい形式に統一します。
 
     Args:
-        errors: DRFのserializer.errorsオブジェクト
+        errors: DRFのserializer.errorsオブジェクト（dict/list/str）
 
     Returns:
         dict[str, list[str]]: フィールド名をキー、エラーメッセージリストを値とする辞書
@@ -25,20 +25,39 @@ def format_validation_errors(errors: dict[str, Any]) -> dict[str, list[str]]:
 
         入力: {"non_field_errors": ["Invalid data."]}
         出力: {"non_field_errors": ["Invalid data."]}
+
+        入力: ["Error 1", "Error 2"]
+        出力: {"non_field_errors": ["Error 1", "Error 2"]}
+
+        入力: "Error message"
+        出力: {"non_field_errors": ["Error message"]}
     """
-    formatted_errors: dict[str, list[str]] = {}
+    # リスト形式のエラー（many=TrueのSerializerなど）
+    if isinstance(errors, list):
+        return {"non_field_errors": [str(error) for error in errors]}
 
-    for field, error_list in errors.items():
-        # ErrorDetailオブジェクトを文字列に変換
-        if isinstance(error_list, list):
-            formatted_errors[field] = [str(error) for error in error_list]
-        elif isinstance(error_list, dict):
-            # ネストされたエラー（例: リスト内のオブジェクトのバリデーション）
-            formatted_errors[field] = _flatten_nested_errors(error_list)
-        else:
-            formatted_errors[field] = [str(error_list)]
+    # 文字列形式のエラー
+    if isinstance(errors, str):
+        return {"non_field_errors": [errors]}
 
-    return formatted_errors
+    # 辞書形式のエラー（通常のケース）
+    if isinstance(errors, dict):
+        formatted_errors: dict[str, list[str]] = {}
+
+        for field, error_list in errors.items():
+            # ErrorDetailオブジェクトを文字列に変換
+            if isinstance(error_list, list):
+                formatted_errors[field] = [str(error) for error in error_list]
+            elif isinstance(error_list, dict):
+                # ネストされたエラー（例: リスト内のオブジェクトのバリデーション）
+                formatted_errors[field] = _flatten_nested_errors(error_list)
+            else:
+                formatted_errors[field] = [str(error_list)]
+
+        return formatted_errors
+
+    # その他の型（想定外）
+    return {"non_field_errors": [str(errors)]}
 
 
 def _flatten_nested_errors(nested_errors: dict[str, Any]) -> list[str]:
@@ -65,14 +84,14 @@ def _flatten_nested_errors(nested_errors: dict[str, Any]) -> list[str]:
     return messages
 
 
-def get_first_validation_error(errors: dict[str, Any]) -> str:
+def get_first_validation_error(errors: Any) -> str:
     """バリデーションエラーから最初のエラーメッセージを取得する.
 
     複数のフィールドでエラーが発生した場合、最初のエラーメッセージのみを返します。
     これは、シンプルなエラー表示が必要な場合に使用します。
 
     Args:
-        errors: DRFのserializer.errorsオブジェクト
+        errors: DRFのserializer.errorsオブジェクト（dict/list/str）
 
     Returns:
         str: 最初のエラーメッセージ
