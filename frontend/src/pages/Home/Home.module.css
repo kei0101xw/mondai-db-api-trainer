@@ -115,3 +115,24 @@
   background-color: #9ca3af;
   cursor: not-allowed;
 }
+
+.guestNotice {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #92400e;
+}
+
+.guestNotice a {
+  color: #3a4e72;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.guestNotice a:hover {
+  color: #2c3d5a;
+}

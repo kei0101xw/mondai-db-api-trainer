@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/auth';
 import styles from './Home.module.css';
 
 const Home = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
   const [appScale, setAppScale] = useState<'small' | 'medium' | 'large'>('small');
   const [mode, setMode] = useState<'both' | 'api_only' | 'db_only'>('both');
@@ -156,6 +158,15 @@ const Home = () => {
           <button type="submit" className={styles.generateButton}>
             問題を生成する
           </button>
+
+          {!user && (
+            <p className={styles.guestNotice}>
+              ※ ログインしていない場合、1問しか解くことができません。
+              <br />
+              複数の問題を解いて学習を進めるには、<a href="/register">ユーザー登録</a>
+              をしてください。
+            </p>
+          )}
         </form>
       </div>
     </div>
