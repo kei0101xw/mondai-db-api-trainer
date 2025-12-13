@@ -226,3 +226,87 @@ class AIGradingFailedError(AppException):
             details=details,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+class PermissionDeniedError(AppException):
+    """権限拒否エラー."""
+
+    def __init__(self, message: Optional[str] = None) -> None:
+        """権限拒否エラーを初期化する.
+
+        Args:
+            message: エラーメッセージ
+        """
+        super().__init__(
+            error_code=ErrorCode.PERMISSION_DENIED,
+            message=message,
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+
+class GuestSessionNotFoundError(AppException):
+    """ゲストセッション未検出エラー."""
+
+    def __init__(self, message: Optional[str] = None) -> None:
+        """ゲストセッション未検出エラーを初期化する.
+
+        Args:
+            message: エラーメッセージ
+        """
+        super().__init__(
+            error_code=ErrorCode.GUEST_SESSION_NOT_FOUND,
+            message=message,
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+class GuestTokenMismatchError(AppException):
+    """ゲストトークン不一致エラー."""
+
+    def __init__(self, message: Optional[str] = None) -> None:
+        """ゲストトークン不一致エラーを初期化する.
+
+        Args:
+            message: エラーメッセージ
+        """
+        super().__init__(
+            error_code=ErrorCode.GUEST_TOKEN_MISMATCH,
+            message=message,
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+
+class GenerationError(AppException):
+    """問題生成エラー."""
+
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
+        """問題生成エラーを初期化する.
+
+        Args:
+            message: エラーメッセージ
+            details: エラー詳細情報
+        """
+        super().__init__(
+            error_code=ErrorCode.GENERATION_ERROR,
+            message=message,
+            details=details,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+class GradingError(AppException):
+    """採点エラー."""
+
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
+        """採点エラーを初期化する.
+
+        Args:
+            message: エラーメッセージ
+            details: エラー詳細情報
+        """
+        super().__init__(
+            error_code=ErrorCode.GRADING_ERROR,
+            message=message,
+            details=details,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

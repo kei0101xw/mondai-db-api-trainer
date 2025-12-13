@@ -6,6 +6,19 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+from common.exceptions import (
+    ValidationError,
+    GuestLimitReachedError,
+    GuestAlreadyGeneratedError,
+    GuestSessionNotFoundError,
+    GuestTokenMismatchError,
+    PermissionDeniedError,
+    NotFoundError,
+    GenerationError,
+    GradingError,
+)
+from common.error_codes import ErrorCode
+
 from .services import (
     ProblemGenerator,
     ProblemGeneratorError,
@@ -56,72 +69,32 @@ class GenerateProblemView(APIView):
 
         # バリデーション
         if not difficulty or difficulty not in ["easy", "medium", "hard"]:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "INVALID_DIFFICULTY",
-                        "message": "difficulty は easy, medium, hard のいずれかを指定してください",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise ValidationError(
+                message="difficulty は easy, medium, hard のいずれかを指定してください"
             )
 
         if not app_scale or app_scale not in ["small", "medium", "large"]:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "INVALID_APP_SCALE",
-                        "message": "app_scale は small, medium, large のいずれかを指定してください",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise ValidationError(
+                message="app_scale は small, medium, large のいずれかを指定してください"
             )
 
         if not mode or mode not in ["db_only", "api_only", "both"]:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "INVALID_MODE",
-                        "message": "mode は db_only, api_only, both のいずれかを指定してください",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise ValidationError(
+                message="mode は db_only, api_only, both のいずれかを指定してください"
             )
 
         # ゲスト制限チェック
         if not request.user.is_authenticated:
             # ゲストが既に採点完了している場合
             if request.session.get("guest_completed"):
-                return Response(
-                    {
-                        "data": None,
-                        "error": {
-                            "code": "GUEST_LIMIT_REACHED",
-                            "message": "ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。",
-                            "details": None,
-                        },
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
+                raise GuestLimitReachedError(
+                    message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
                 )
 
             # ゲストが既に問題を生成している場合
             if request.session.get("guest_problem_token"):
-                return Response(
-                    {
-                        "data": None,
-                        "error": {
-                            "code": "GUEST_ALREADY_GENERATED",
-                            "message": "ゲストユーザーは既に問題を生成しています。先に回答を提出してください。",
-                            "details": None,
-                        },
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
+                raise GuestAlreadyGeneratedError(
+                    message="ゲストユーザーは既に問題を生成しています。先に回答を提出してください。"
                 )
 
         # 問題生成
@@ -150,17 +123,7 @@ class GenerateProblemView(APIView):
             )
 
         except ProblemGeneratorError as e:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "GENERATION_ERROR",
-                        "message": str(e),
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            raise GenerationError(message=str(e))
 
 
 class GradeAnswerView(APIView):
@@ -208,30 +171,12 @@ class GradeAnswerView(APIView):
             or not isinstance(answer_body, str)
             or not answer_body.strip()
         ):
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "MISSING_ANSWER_BODY",
-                        "message": "answer_body は必須です",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError(message="answer_body は必須です")
 
         # answer_body 長さチェック
         if len(answer_body) > MAX_ANSWER_BODY_LENGTH:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "ANSWER_BODY_TOO_LONG",
-                        "message": f"回答は{MAX_ANSWER_BODY_LENGTH}文字以下である必要があります",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise ValidationError(
+                message=f"回答は{MAX_ANSWER_BODY_LENGTH}文字以下である必要があります"
             )
 
         # XOR入力ルールチェック
@@ -242,69 +187,29 @@ class GradeAnswerView(APIView):
         # ログインユーザーの場合
         if is_authenticated:
             if not has_problem_id:
-                return Response(
-                    {
-                        "data": None,
-                        "error": {
-                            "code": "MISSING_PROBLEM_ID",
-                            "message": "ログインユーザーは problem_id が必須です",
-                            "details": None,
-                        },
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+                raise ValidationError(
+                    message="ログインユーザーは problem_id が必須です"
                 )
             if has_guest_info:
-                return Response(
-                    {
-                        "data": None,
-                        "error": {
-                            "code": "INVALID_INPUT_COMBINATION",
-                            "message": "ログインユーザーは order_index と guest_token を指定できません",
-                            "details": None,
-                        },
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+                raise ValidationError(
+                    message="ログインユーザーは order_index と guest_token を指定できません"
                 )
 
         # ゲストユーザーの場合
         else:
             if has_problem_id:
-                return Response(
-                    {
-                        "data": None,
-                        "error": {
-                            "code": "INVALID_INPUT_COMBINATION",
-                            "message": "ゲストユーザーは problem_id を指定できません",
-                            "details": None,
-                        },
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+                raise ValidationError(
+                    message="ゲストユーザーは problem_id を指定できません"
                 )
             if not has_guest_info:
-                return Response(
-                    {
-                        "data": None,
-                        "error": {
-                            "code": "MISSING_GUEST_INFO",
-                            "message": "ゲストユーザーは order_index と guest_token が必須です",
-                            "details": None,
-                        },
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+                raise ValidationError(
+                    message="ゲストユーザーは order_index と guest_token が必須です"
                 )
 
             # ゲスト制限チェック（採点完了済みの場合は拒否）
             if request.session.get("guest_completed"):
-                return Response(
-                    {
-                        "data": None,
-                        "error": {
-                            "code": "GUEST_LIMIT_REACHED",
-                            "message": "ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。",
-                            "details": None,
-                        },
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
+                raise GuestLimitReachedError(
+                    message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
                 )
 
         # ログインユーザー向け処理
@@ -332,31 +237,14 @@ class GradeAnswerView(APIView):
                 problem_id=problem_id
             )
         except Problem.DoesNotExist:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "PROBLEM_NOT_FOUND",
-                        "message": f"問題ID {problem_id} が見つかりません",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_NOT_FOUND,
+                message=f"問題ID {problem_id} が見つかりません",
             )
 
         # 所有者チェック
         if problem.problem_group.created_by_user != request.user:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "PERMISSION_DENIED",
-                        "message": "この問題にはアクセスできません",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDeniedError(message="この問題にはアクセスできません")
 
         # 採点実行
         try:
@@ -367,17 +255,7 @@ class GradeAnswerView(APIView):
                 answer_body=answer_body,
             )
         except AnswerGraderError as e:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "GRADING_ERROR",
-                        "message": str(e),
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            raise GradingError(message=str(e))
 
         # Answerモデルに保存
         answer = Answer.objects.create(
@@ -421,32 +299,14 @@ class GradeAnswerView(APIView):
         # セッションからゲスト問題データを取得
         guest_problem_data = request.session.get("guest_problem_data")
         if not guest_problem_data:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "GUEST_SESSION_NOT_FOUND",
-                        "message": "ゲストセッションが見つかりません。先に問題を生成してください。",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise GuestSessionNotFoundError(
+                message="ゲストセッションが見つかりません。先に問題を生成してください。"
             )
 
         # ゲストトークンの一致確認
         session_token = guest_problem_data.get("guest_token")
         if session_token != guest_token:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "GUEST_TOKEN_MISMATCH",
-                        "message": "ゲストトークンが一致しません",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise GuestTokenMismatchError(message="ゲストトークンが一致しません")
 
         # order_indexに対応する問題を取得
         problems = guest_problem_data.get("problems", [])
@@ -457,16 +317,9 @@ class GradeAnswerView(APIView):
                 break
 
         if not problem_data:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "PROBLEM_NOT_FOUND",
-                        "message": f"order_index {order_index} の問題が見つかりません",
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_NOT_FOUND,
+                message=f"order_index {order_index} の問題が見つかりません",
             )
 
         # 採点実行
@@ -478,17 +331,7 @@ class GradeAnswerView(APIView):
                 answer_body=answer_body,
             )
         except AnswerGraderError as e:
-            return Response(
-                {
-                    "data": None,
-                    "error": {
-                        "code": "GRADING_ERROR",
-                        "message": str(e),
-                        "details": None,
-                    },
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            raise GradingError(message=str(e))
 
         # 採点成功後、採点済みインデックスを記録
         graded_indices = set(request.session.get("guest_graded_indices", []))
