@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     # Third-party apps
     "rest_framework",
     "corsheaders",
+    # Local apps
+    "apps.auth.apps.AuthConfig",
 ]
 
 MIDDLEWARE = [
@@ -133,6 +135,12 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ========================================
+# Authentication
+# ========================================
+# Custom Userモデルを使用（labelはaccountsに設定）
+AUTH_USER_MODEL = "accounts.User"
 
 # ========================================
 # Django REST Framework
