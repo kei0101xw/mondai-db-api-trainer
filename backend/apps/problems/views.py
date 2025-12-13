@@ -276,6 +276,20 @@ class GradeAnswerView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # ゲスト制限チェック（採点完了済みの場合は拒否）
+            if request.session.get("guest_completed"):
+                return Response(
+                    {
+                        "data": None,
+                        "error": {
+                            "code": "GUEST_LIMIT_REACHED",
+                            "message": "ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。",
+                            "details": None,
+                        },
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         # ログインユーザー向け処理
         if is_authenticated:
             return self._handle_authenticated_user(request, problem_id, answer_body)
@@ -457,8 +471,19 @@ class GradeAnswerView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # セッションに guest_completed=True をセット
-        request.session["guest_completed"] = True
+        # 採点成功後、採点済みインデックスを記録
+        graded_indices = set(request.session.get("guest_graded_indices", []))
+        graded_indices.add(order_index)
+        request.session["guest_graded_indices"] = list(graded_indices)
+
+        # すべての問題が採点済みか確認
+        total_problems = len(guest_problem_data.get("problems", []))
+        if len(graded_indices) >= total_problems:
+            # すべての問題を採点完了 → guest_completed=True
+            request.session["guest_completed"] = True
+
+        # セッション保存を明示的に呼び出す
+        request.session.modified = True
 
         # grade_display を生成
         grade_display_map = {0: "×", 1: "△", 2: "○"}
