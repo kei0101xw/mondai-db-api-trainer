@@ -1,10 +1,10 @@
 """認証関連のビジネスロジック."""
 
 from django.contrib.auth import authenticate
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.auth.models import User
-from common.exceptions import InvalidCredentialsError
+from common.exceptions import EmailAlreadyExistsError, InvalidCredentialsError
 
 
 @transaction.atomic
@@ -12,7 +12,8 @@ def register_user(email: str, password: str, name: str) -> User:
     """ユーザーを新規登録する.
 
     トランザクション内でユーザーを作成します。
-    メールアドレスの重複チェックはSerializer層で実施済みです。
+    メールアドレスの重複チェックはSerializer層で実施済みですが、
+    同時登録などでDB制約に当たる場合に備えてIntegrityErrorも処理します。
 
     Args:
         email: メールアドレス（正規化済み）
@@ -23,17 +24,24 @@ def register_user(email: str, password: str, name: str) -> User:
         User: 作成されたユーザーオブジェクト
 
     Raises:
-        なし（Serializer層でバリデーション済み）
+        EmailAlreadyExistsError: メールアドレスが既に登録されている場合
     """
-    # UserManagerのcreate_userメソッドを使用
-    # パスワードは自動的にハッシュ化されます
-    user = User.objects.create_user(
-        email=email,
-        password=password,
-        name=name,
-    )
-
-    return user
+    try:
+        # UserManagerのcreate_userメソッドを使用
+        # パスワードは自動的にハッシュ化されます
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            name=name,
+        )
+        return user
+    except IntegrityError as e:
+        # DB UNIQUE制約違反（同時登録などで発生）
+        # emailフィールドのUNIQUE制約違反の場合
+        if "email" in str(e).lower() or "unique" in str(e).lower():
+            raise EmailAlreadyExistsError("このメールアドレスは既に登録されています")
+        # その他のIntegrityError
+        raise
 
 
 def authenticate_user(email: str, password: str) -> User:

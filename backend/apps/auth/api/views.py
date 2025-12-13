@@ -74,7 +74,7 @@ def register_user_view(request: Request) -> Response:
 
     # レスポンス
     user_data = UserSerializer(user).data
-    return success_response(data=user_data, status=201)
+    return success_response(data={"user": user_data}, status=201)
 
 
 @api_view(["POST"])
@@ -110,7 +110,7 @@ def login_user_view(request: Request) -> Response:
 
     # レスポンス
     user_data = UserSerializer(user).data
-    return success_response(data=user_data, status=200)
+    return success_response(data={"user": user_data}, status=200)
 
 
 @api_view(["POST"])
@@ -129,10 +129,8 @@ def logout_user_view(request: Request) -> Response:
     # ログアウト（セッション削除）
     logout(request)
 
-    return success_response(
-        data={"message": "ログアウトしました"},
-        status=200,
-    )
+    # レスポンス
+    return success_response(data={"ok": True}, status=200)
 
 
 @api_view(["GET"])
@@ -148,4 +146,5 @@ def get_current_user_view(request: Request) -> Response:
     """
     # request.userは認証済み（IsAuthenticatedで保証）
     user_data = UserSerializer(request.user).data
-    return success_response(data=user_data, status=200)
+    # レスポンス
+    return success_response(data={"user": user_data}, status=200)

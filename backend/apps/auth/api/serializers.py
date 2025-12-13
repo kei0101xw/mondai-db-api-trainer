@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.auth.models import User
+from common.exceptions import EmailAlreadyExistsError
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -61,9 +62,7 @@ class UserRegisterSerializer(serializers.Serializer):
 
         # 重複チェック
         if User.objects.filter(email=normalized_email).exists():
-            raise serializers.ValidationError(
-                "このメールアドレスは既に登録されています"
-            )
+            raise EmailAlreadyExistsError("このメールアドレスは既に登録されています")
 
         return normalized_email
 
