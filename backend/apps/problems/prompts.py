@@ -226,3 +226,119 @@ def build_grading_prompt(problem_type: str, problem_body: str, answer_body: str)
 """
 
     return prompt
+
+
+def build_batch_grading_prompt(problems_with_answers: list[dict]) -> str:
+    """
+    一括採点用のプロンプトを構築する
+
+    Args:
+        problems_with_answers: 問題と回答のペアリスト
+            [
+                {
+                    "order_index": 1,
+                    "problem_type": "db",
+                    "problem_body": "問題文",
+                    "answer_body": "回答"
+                },
+                ...
+            ]
+
+    Returns:
+        Gemini API に投げるプロンプト文字列
+    """
+
+    # 各問題の採点セクションを構築
+    problems_section = ""
+    for item in problems_with_answers:
+        order_index = item["order_index"]
+        problem_type = item["problem_type"]
+        problem_type_name = "データベース設計" if problem_type == "db" else "API設計"
+        problem_body = item["problem_body"]
+        answer_body = item["answer_body"]
+
+        problems_section += f"""
+---
+## 問題 {order_index}（{problem_type_name}問題）
+
+### 問題文
+{problem_body}
+
+### 受講者の回答
+{answer_body}
+
+"""
+
+    prompt = f"""あなたは経験豊富なバックエンドエンジニアで、データベース設計・API設計問題の採点を行う専門家です。
+
+以下の複数の問題に対する受講者の回答を一括で採点してください。
+
+# 採点対象
+{problems_section}
+
+# 採点基準
+
+各問題を以下の観点で採点してください：
+
+## データベース設計問題の評価ポイント
+- テーブル設計が要件を満たしているか
+- 主キー、外部キー、インデックスが適切に設定されているか
+- 正規化が適切に行われているか（過度な正規化や非正規化の問題がないか）
+- データ型の選択が適切か
+- NOT NULL制約、UNIQUE制約、CHECK制約などが適切か
+- リレーション（1対多、多対多など）が正しくモデル化されているか
+- スケーラビリティやパフォーマンスへの配慮があるか
+- 命名規則が一貫しているか
+
+## API設計問題の評価ポイント
+- エンドポイント設計が要件を満たしているか
+- HTTPメソッド（GET/POST/PUT/DELETE等）の選択が適切か
+- URLパス設計がRESTfulか、リソース指向になっているか
+- リクエスト・レスポンスの項目が適切か
+- 認証・認可の考慮があるか
+- エラーハンドリングが適切か（ステータスコード、エラーレスポンス）
+- ページング、フィルタリング、ソートなどの考慮があるか
+- 冪等性やレート制限などの非機能要件への配慮があるか
+- 疑似コードが設計と整合しているか
+
+# 採点結果
+
+各問題の採点結果を以下の3段階で評価してください：
+- ○（2点）: 要件を満たしており、設計として十分に優れている
+- △（1点）: 部分的に要件を満たしているが、改善の余地がある
+- ×（0点）: 要件を満たしていない、または重大な設計上の問題がある
+
+# 出力形式（JSON）
+
+必ず以下のJSON形式で出力してください。JSONのみを出力し、それ以外の説明文は含めないでください。
+各問題の採点結果を results 配列に order_index 順で格納してください。
+
+```json
+{{
+  "results": [
+    {{
+      "order_index": 1,
+      "grade": 2,
+      "model_answer": "問題1の模範解答をここに記述してください。問題の要件を完全に満たす設計例を示してください。",
+      "explanation": "問題1の採点の根拠と、受講者の回答の良かった点・改善すべき点を具体的に説明してください。"
+    }},
+    {{
+      "order_index": 2,
+      "grade": 1,
+      "model_answer": "問題2の模範解答をここに記述してください。",
+      "explanation": "問題2の採点の根拠と、受講者の回答の良かった点・改善すべき点を具体的に説明してください。"
+    }}
+  ]
+}}
+```
+
+# 注意事項
+- results 配列には、入力された問題数と同じ数の要素を含めてください
+- 各要素の order_index は入力された問題の order_index と一致させてください
+- grade は必ず 0, 1, 2 のいずれかの整数値を出力してください
+- model_answer は具体的かつ実践的な内容にしてください
+- explanation は建設的なフィードバックを心がけ、なぜその採点になったのか明確に説明してください
+- 必ずJSONのみを出力してください（```json マーカーも不要です）
+"""
+
+    return prompt
