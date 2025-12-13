@@ -280,19 +280,8 @@ class GradeAnswerView(APIView):
         if is_authenticated:
             return self._handle_authenticated_user(request, problem_id, answer_body)
 
-        # TODO: ゲストユーザー向け処理
-
-        return Response(
-            {
-                "data": None,
-                "error": {
-                    "code": "NOT_IMPLEMENTED",
-                    "message": "実装中",
-                    "details": None,
-                },
-            },
-            status=status.HTTP_501_NOT_IMPLEMENTED,
-        )
+        # ゲストユーザー向け処理
+        return self._handle_guest_user(request, order_index, guest_token, answer_body)
 
     def _handle_authenticated_user(self, request, problem_id, answer_body):
         """
@@ -363,6 +352,112 @@ class GradeAnswerView(APIView):
                     "model_answer": grading_result["model_answer"],
                     "explanation": grading_result["explanation"],
                     "answer_id": answer.answer_id,
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _handle_guest_user(self, request, order_index, guest_token, answer_body):
+        """
+        ゲストユーザー向けの採点処理
+
+        Args:
+            request: リクエストオブジェクト
+            order_index: 問題の順序インデックス
+            guest_token: ゲストトークン
+            answer_body: 回答本文
+
+        Returns:
+            Response: 採点結果のレスポンス
+        """
+        # セッションからゲスト問題データを取得
+        guest_problem_data = request.session.get("guest_problem_data")
+        if not guest_problem_data:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "GUEST_SESSION_NOT_FOUND",
+                        "message": "ゲストセッションが見つかりません。先に問題を生成してください。",
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ゲストトークンの一致確認
+        session_token = guest_problem_data.get("guest_token")
+        if session_token != guest_token:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "GUEST_TOKEN_MISMATCH",
+                        "message": "ゲストトークンが一致しません",
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # order_indexに対応する問題を取得
+        problems = guest_problem_data.get("problems", [])
+        problem_data = None
+        for p in problems:
+            if p.get("order_index") == order_index:
+                problem_data = p
+                break
+
+        if not problem_data:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "PROBLEM_NOT_FOUND",
+                        "message": f"order_index {order_index} の問題が見つかりません",
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 採点実行
+        try:
+            grader = AnswerGrader()
+            grading_result = grader.grade(
+                problem_type=problem_data["problem_type"],
+                problem_body=problem_data["problem_body"],
+                answer_body=answer_body,
+            )
+        except AnswerGraderError as e:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "GRADING_ERROR",
+                        "message": str(e),
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # セッションに guest_completed=True をセット
+        request.session["guest_completed"] = True
+
+        # grade_display を生成
+        grade_display_map = {0: "×", 1: "△", 2: "○"}
+        grade_display = grade_display_map.get(grading_result["grade"], "×")
+
+        # レスポンス構築（ゲストはanswer_idなし）
+        return Response(
+            {
+                "data": {
+                    "grade": grading_result["grade"],
+                    "grade_display": grade_display,
+                    "model_answer": grading_result["model_answer"],
+                    "explanation": grading_result["explanation"],
                 },
                 "error": None,
             },
