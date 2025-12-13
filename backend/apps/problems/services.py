@@ -27,8 +27,22 @@ class GeneratedProblemGroup(TypedDict):
     problems: List[ProblemData]
 
 
+class GradingResult(TypedDict):
+    """採点結果のデータ構造"""
+
+    grade: int
+    model_answer: str
+    explanation: str
+
+
 class ProblemGeneratorError(Exception):
     """問題生成エラー"""
+
+    pass
+
+
+class AnswerGraderError(Exception):
+    """採点エラー"""
 
     pass
 
