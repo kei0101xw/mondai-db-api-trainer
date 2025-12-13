@@ -41,10 +41,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Third-party apps
+    "rest_framework",
+    "corsheaders",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # CORS処理（SessionMiddlewareより前に配置）
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -129,3 +133,121 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ========================================
+# Django REST Framework
+# ========================================
+REST_FRAMEWORK = {
+    # カスタム例外ハンドラー（統一レスポンス形式）
+    "EXCEPTION_HANDLER": "common.exception_handlers.custom_exception_handler",
+    # デフォルトのレンダラー
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
+    # デフォルトのパーサー
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+    ],
+    # セッション認証を使用
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    # デフォルトはパーミッションチェックなし（各Viewで個別に設定）
+    "DEFAULT_PERMISSION_CLASSES": [],
+}
+
+# ========================================
+# CORS (Cross-Origin Resource Sharing)
+# ========================================
+# フロントエンドからのcredentials: "include"リクエストに対応するための設定
+
+# 許可するオリジン（環境変数で設定、カンマ区切り）
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
+).split(",")
+
+# クッキー（credentials）を含むリクエストを許可
+CORS_ALLOW_CREDENTIALS = True
+
+# プリフライトリクエストの結果をキャッシュする時間（秒）
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24時間
+
+# 許可するHTTPメソッド
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+
+# 許可するHTTPヘッダー
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",  # CSRFトークン用
+    "x-requested-with",
+]
+
+# ========================================
+# CSRF (Cross-Site Request Forgery) Protection
+# ========================================
+# SPAからのリクエストに対応するためのCSRF設定
+
+# CSRF Cookieの名前
+CSRF_COOKIE_NAME = "csrftoken"
+
+# CSRF CookieをHTTPSでのみ送信（本番環境）
+CSRF_COOKIE_SECURE = not DEBUG
+
+# CSRF Cookieを同一サイトからのみ送信（SameSite属性）
+# "Lax"は通常のGETリクエストでCookieを送信、POSTでは送信しない
+# SPAの場合は"None"にしてcredentials: "include"と併用する必要がある
+CSRF_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+
+# CSRF CookieをJavaScriptから読み取り可能にする（フロントエンドでトークン取得用）
+CSRF_COOKIE_HTTPONLY = False
+
+# 信頼するオリジン（CSRF検証用）
+# CORS_ALLOWED_ORIGINSと同じ値を使用
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+
+# CSRFトークンのヘッダー名（デフォルトは"X-CSRFToken"）
+CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
+
+# ========================================
+# Session Settings
+# ========================================
+# SPAからのcredentials: "include"に対応したセッション管理設定
+
+# セッションCookieの名前
+SESSION_COOKIE_NAME = "sessionid"
+
+# セッションCookieをHTTPSでのみ送信（本番環境）
+SESSION_COOKIE_SECURE = not DEBUG
+
+# セッションCookieを同一サイトからのみ送信（SameSite属性）
+# SPAの場合は"None"にしてcredentials: "include"と併用する必要がある
+SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+
+# セッションCookieをJavaScriptから読み取り不可にする（セキュリティ強化）
+SESSION_COOKIE_HTTPONLY = True
+
+# セッションCookieの有効期間（秒）
+# 2週間（1209600秒）
+SESSION_COOKIE_AGE = 1209600
+
+# ブラウザを閉じてもセッションを保持する
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
+# セッションの保存先（デフォルトはデータベース）
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+
+# セッションをリクエストごとに保存する（アクティビティ検知用）
+SESSION_SAVE_EVERY_REQUEST = False
