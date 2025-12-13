@@ -11,7 +11,7 @@ uv sync
 ## ■ ローカルサーバーの起動
 
 ```bash
-uv run python manage.py runserver
+uv run python manage.py runserver localhost:8000
 ```
 
 ## ■Python のバージョン管理について
@@ -91,7 +91,7 @@ uv run python manage.py createsuperuser
 
 サーバー起動後、管理画面にアクセス：
 
-* `http://127.0.0.1:8000/admin/`
+- `http://127.0.0.1:8000/admin/`
 
 ## ■ Lint / Format の実行方法
 

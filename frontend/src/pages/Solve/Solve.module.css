@@ -1,0 +1,176 @@
+.container {
+  display: flex;
+  height: calc(100vh - 60px); /* ヘッダーの高さを引く */
+  width: 100%;
+}
+
+.leftPanel {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.divider {
+  width: 1px;
+  background-color: #dddddd;
+  flex-shrink: 0;
+}
+
+.rightPanel {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+  background-color: #f9f9f9;
+}
+
+.loadingContainer,
+.errorContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: calc(100vh - 60px);
+}
+
+.errorMessage {
+  color: #dc2626;
+  font-size: 1.1rem;
+}
+
+.problemHeader {
+  margin-bottom: 2rem;
+}
+
+.problemHeader h2 {
+  font-size: 2rem;
+  color: #1a1a1a;
+  margin-bottom: 1rem;
+}
+
+.badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background-color: #e5e7eb;
+  color: #374151;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.problemDescription {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border-left: 4px solid #3a4e72;
+}
+
+.problemDescription p {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.problemsList {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.problemItem {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.problemTypeLabel {
+  background-color: #3a4e72;
+  color: #ffffff;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.problemBody {
+  padding: 1.5rem;
+  background-color: #ffffff;
+}
+
+.problemBody pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #1f2937;
+  margin: 0;
+}
+
+.rightPanel h3 {
+  font-size: 1.5rem;
+  color: #1a1a1a;
+  margin-bottom: 1.5rem;
+}
+
+.answerSection {
+  margin-bottom: 2rem;
+}
+
+.answerSection h4 {
+  font-size: 1.125rem;
+  color: #374151;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.answerTextarea {
+  width: 90%;
+  min-height: 200px;
+  padding: 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  resize: vertical;
+  background-color: #ffffff;
+}
+
+.answerTextarea:focus {
+  outline: none;
+  border-color: #3a4e72;
+  box-shadow: 0 0 0 3px rgba(58, 78, 114, 0.1);
+}
+
+.submitButton {
+  width: 100%;
+  padding: 1rem;
+  background-color: #3a4e72;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.submitButton:hover {
+  background-color: #2d3d5a;
+}
+
+.submitButton:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.submitButton:active {
+  transform: translateY(1px);
+}
