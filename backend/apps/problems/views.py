@@ -116,8 +116,8 @@ class GenerateProblemView(APIView):
                 )
 
         # 問題生成
-        generator = ProblemGenerator()
         try:
+            generator = ProblemGenerator()
             user = request.user if request.user.is_authenticated else None
             problem_group, problems, response_data = generator.generate(
                 difficulty=difficulty,
