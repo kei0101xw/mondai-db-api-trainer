@@ -1,3 +1,4 @@
+import atexit
 import os
 from typing import Any, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
@@ -11,12 +12,44 @@ class GeminiClientError(Exception):
     pass
 
 
+# モジュールレベルでThreadPoolExecutorを共有することで、
+# インスタンスごとにスレッドプールを作成せず、リソースリークを防ぐ
+_shared_executor: Optional[ThreadPoolExecutor] = None
+
+
+def _get_shared_executor() -> ThreadPoolExecutor:
+    """
+    共有のThreadPoolExecutorを取得する
+
+    初回呼び出し時にexecutorを作成し、以降は同じインスタンスを返す。
+    アプリケーション終了時にatexitでクリーンアップされる。
+    """
+    global _shared_executor
+    if _shared_executor is None:
+        _shared_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="gemini")
+        # アプリケーション終了時にshutdownを実行
+        atexit.register(_shutdown_shared_executor)
+    return _shared_executor
+
+
+def _shutdown_shared_executor() -> None:
+    """共有のThreadPoolExecutorをシャットダウンする"""
+    global _shared_executor
+    if _shared_executor is not None:
+        _shared_executor.shutdown(wait=True)
+        _shared_executor = None
+
+
 class GeminiClient:
     """
     Gemini API のクライアントクラス
 
     環境変数 GEMINI_API_KEY からAPIキーを読み込み、
     Gemini API へのリクエストを行う。
+
+    Note:
+        ThreadPoolExecutorはモジュールレベルで共有され、
+        アプリケーション終了時に自動的にクリーンアップされます。
     """
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
@@ -28,8 +61,8 @@ class GeminiClient:
 
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
         self.client = genai.Client(api_key=self.api_key)
-        # タイムアウト処理用のスレッドプール
-        self._executor = ThreadPoolExecutor(max_workers=1)
+        # 共有のスレッドプールを使用
+        self._executor = _get_shared_executor()
 
     def generate_content(
         self,
@@ -128,3 +161,17 @@ class GeminiClient:
             response_format="application/json",
             timeout=timeout,
         )
+
+    def __enter__(self):
+        """コンテキストマネージャーのエントリーポイント"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        コンテキストマネージャーの終了処理
+
+        Note:
+            共有executorを使用しているため、ここでは何もしない。
+            個別インスタンスでのシャットダウンは不要。
+        """
+        pass
