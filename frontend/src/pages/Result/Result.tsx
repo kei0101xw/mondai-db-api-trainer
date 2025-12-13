@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { GenerateProblemResponse, GradeResult } from '../../entities/problem/types';
+import { useAuth } from '../../contexts';
 import styles from './Result.module.css';
 
 type TabType = 'problem' | 'solution' | 'grading';
@@ -14,6 +15,7 @@ interface LocationState {
 const Result = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const state = location.state as LocationState;
   const [activeTab, setActiveTab] = useState<TabType>('grading');
 
@@ -175,9 +177,10 @@ const Result = () => {
         <div className={styles.buttonContainer}>
           <button
             onClick={() => {
-              // SessionStorageから問題データをクリア
+              // SessionStorageから問題データをクリア（Solveと同じキー構造で削除）
               const { difficulty, app_scale, mode } = problemData.problem_group;
-              const storageKey = `mondai_problem_${difficulty}_${app_scale}_${mode}`;
+              const userPrefix = isAuthenticated ? `user_${user?.user_id}` : 'guest';
+              const storageKey = `mondai_problem_${userPrefix}_${difficulty}_${app_scale}_${mode}`;
               sessionStorage.removeItem(storageKey);
               navigate('/');
             }}
