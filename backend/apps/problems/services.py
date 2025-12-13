@@ -6,7 +6,7 @@ from django.db import transaction
 
 from common.ai.gemini_client import GeminiClient, GeminiClientError
 from .models import ProblemGroup, Problem
-from .prompts import build_problem_generation_prompt
+from .prompts import build_problem_generation_prompt, build_grading_prompt
 
 User = get_user_model()
 
@@ -27,8 +27,22 @@ class GeneratedProblemGroup(TypedDict):
     problems: List[ProblemData]
 
 
+class GradingResult(TypedDict):
+    """採点結果のデータ構造"""
+
+    grade: int
+    model_answer: str
+    explanation: str
+
+
 class ProblemGeneratorError(Exception):
     """問題生成エラー"""
+
+    pass
+
+
+class AnswerGraderError(Exception):
+    """採点エラー"""
 
     pass
 
@@ -320,3 +334,87 @@ class ProblemGenerator:
         }
 
         return None, None, response_data
+
+
+class AnswerGrader:
+    """
+    Gemini APIを使用して解答を採点するサービスクラス
+    """
+
+    def __init__(self, gemini_client: Optional[GeminiClient] = None):
+        """
+        Args:
+            gemini_client: GeminiClientインスタンス（テスト用）
+        """
+        self.gemini_client = gemini_client or GeminiClient()
+
+    def grade(
+        self, problem_type: str, problem_body: str, answer_body: str
+    ) -> GradingResult:
+        """
+        解答を採点する
+
+        Args:
+            problem_type: 問題タイプ (db/api)
+            problem_body: 問題本文
+            answer_body: ユーザーの回答
+
+        Returns:
+            採点結果（grade, model_answer, explanation）
+
+        Raises:
+            AnswerGraderError: 採点に失敗した場合
+        """
+        # プロンプト構築
+        prompt = build_grading_prompt(problem_type, problem_body, answer_body)
+
+        # Gemini APIで採点
+        try:
+            response_text = self.gemini_client.generate_content(
+                prompt=prompt,
+                temperature=0.3,  # 採点は一貫性を重視するため低めに設定
+                response_format="application/json",
+            )
+        except GeminiClientError as e:
+            raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
+
+        # JSONパース
+        try:
+            grading_result: GradingResult = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            raise AnswerGraderError(f"JSONパースエラー: {e}") from e
+
+        # 結果が辞書型かチェック
+        if not isinstance(grading_result, dict):
+            raise AnswerGraderError(
+                f"採点結果がオブジェクトではありません（型: {type(grading_result).__name__}）"
+            )
+
+        # バリデーション
+        self._validate_grading_result(grading_result)
+
+        return grading_result
+
+    def _validate_grading_result(self, result: GradingResult) -> None:
+        """
+        採点結果をバリデーションする
+
+        Args:
+            result: 採点結果
+
+        Raises:
+            AnswerGraderError: バリデーションエラー
+        """
+        # 必須フィールドチェック
+        if "grade" not in result:
+            raise AnswerGraderError("grade が含まれていません")
+        if "model_answer" not in result or not result["model_answer"]:
+            raise AnswerGraderError("model_answer が含まれていません")
+        if "explanation" not in result or not result["explanation"]:
+            raise AnswerGraderError("explanation が含まれていません")
+
+        # grade の値チェック
+        if not isinstance(result["grade"], int) or result["grade"] not in [0, 1, 2]:
+            raise AnswerGraderError(
+                f"grade は 0, 1, 2 のいずれかである必要があります（実際: {result['grade']}）"
+            )
