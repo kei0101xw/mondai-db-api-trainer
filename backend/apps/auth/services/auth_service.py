@@ -6,6 +6,12 @@ from django.db import IntegrityError, transaction
 from apps.auth.models import User
 from common.exceptions import EmailAlreadyExistsError, InvalidCredentialsError
 
+# PostgreSQL固有のエラーコード
+try:
+    from psycopg2 import errors as pg_errors
+except ImportError:
+    pg_errors = None
+
 
 @transaction.atomic
 def register_user(email: str, password: str, name: str) -> User:
@@ -37,10 +43,19 @@ def register_user(email: str, password: str, name: str) -> User:
         return user
     except IntegrityError as e:
         # DB UNIQUE制約違反（同時登録などで発生）
-        # emailフィールドのUNIQUE制約違反の場合
-        if "email" in str(e).lower() or "unique" in str(e).lower():
+        # PostgreSQLの場合はエラーコードで判定（より確実）
+        if pg_errors and hasattr(e.__cause__, "pgcode"):
+            if e.__cause__.pgcode == pg_errors.UniqueViolation.pgcode:
+                raise EmailAlreadyExistsError(
+                    "このメールアドレスは既に登録されています"
+                )
+
+        # フォールバック: 文字列マッチング（他のDBエンジン用）
+        error_msg = str(e).lower()
+        if "email" in error_msg or "unique" in error_msg:
             raise EmailAlreadyExistsError("このメールアドレスは既に登録されています")
-        # その他のIntegrityError
+
+        # その他のIntegrityError（想定外）
         raise
 
 

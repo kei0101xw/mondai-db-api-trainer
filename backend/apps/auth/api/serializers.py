@@ -12,12 +12,13 @@ class UserSerializer(serializers.ModelSerializer):
     """ユーザー情報のレスポンス用シリアライザー.
 
     パスワードなどの機密情報を除外し、クライアントに返すべき情報のみを含めます。
+    API仕様に準拠し、user_id, email, name のみを返します。
     """
 
     class Meta:
         model = User
-        fields = ["user_id", "email", "name", "icon_url", "created_at"]
-        read_only_fields = ["user_id", "created_at"]
+        fields = ["user_id", "email", "name"]
+        read_only_fields = ["user_id"]
 
 
 class UserRegisterSerializer(serializers.Serializer):
@@ -71,6 +72,7 @@ class UserRegisterSerializer(serializers.Serializer):
 
         Django標準のパスワードバリデーターを使用します。
         settings.pyで設定されたバリデーター（最小長、共通パスワード、数字のみ禁止など）を適用します。
+        UserAttributeSimilarityValidator等のためにユーザー情報も渡します。
 
         Args:
             value: パスワード
@@ -81,10 +83,16 @@ class UserRegisterSerializer(serializers.Serializer):
         Raises:
             ValidationError: パスワードが要件を満たさない場合
         """
+        # ユーザー文脈を含めたバリデーションのため、一時的なUserオブジェクトを作成
+        # UserAttributeSimilarityValidator等がメールアドレスや名前との類似性をチェックできる
+        email = self.initial_data.get("email", "")
+        name = self.initial_data.get("name", "")
+        temp_user = User(email=email, name=name)
+
         try:
             # Django標準のパスワードバリデーション
             # settings.AUTH_PASSWORD_VALIDATORSで設定された検証を実行
-            validate_password(value)
+            validate_password(value, user=temp_user)
         except DjangoValidationError as e:
             # Djangoのバリデーションエラーを統一形式に変換
             raise serializers.ValidationError(list(e.messages))

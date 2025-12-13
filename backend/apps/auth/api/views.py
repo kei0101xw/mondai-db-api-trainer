@@ -69,8 +69,10 @@ def register_user_view(request: Request) -> Response:
         name=serializer.validated_data["name"],
     )
 
-    # 自動ログイン
-    login(request, user)
+    # 自動ログイン（backend属性を明示的に指定）
+    # register_user()で作成したユーザーはauthenticate()経由ではないため
+    # backend属性がなく、login()でValueErrorが発生する
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
     # レスポンス
     user_data = UserSerializer(user).data
