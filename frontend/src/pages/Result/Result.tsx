@@ -173,7 +173,16 @@ const Result = () => {
           );
         })}
         <div className={styles.buttonContainer}>
-          <button onClick={() => navigate('/')} className={styles.finishButton}>
+          <button
+            onClick={() => {
+              // SessionStorageから問題データをクリア
+              const { difficulty, app_scale, mode } = problemData.problem_group;
+              const storageKey = `mondai_problem_${difficulty}_${app_scale}_${mode}`;
+              sessionStorage.removeItem(storageKey);
+              navigate('/');
+            }}
+            className={styles.finishButton}
+          >
             終了してホームに戻る
           </button>
         </div>
