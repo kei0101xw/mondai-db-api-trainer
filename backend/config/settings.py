@@ -14,20 +14,21 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 
-load_dotenv()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "unsafe-default")
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY and not DEBUG:
+    raise RuntimeError("DJANGO_SECRET_KEY must be set in production")
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
 
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
     "corsheaders",
     # Local apps
     "apps.auth.apps.AuthConfig",
+    "apps.problems",
 ]
 
 MIDDLEWARE = [
@@ -119,7 +121,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Tokyo"
 
 USE_I18N = True
 
@@ -160,8 +162,9 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
     ],
-    # デフォルトはパーミッションチェックなし（各Viewで個別に設定）
-    "DEFAULT_PERMISSION_CLASSES": [],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny",  # API単位で制御
+    ],
 }
 
 # ========================================
@@ -169,10 +172,8 @@ REST_FRAMEWORK = {
 # ========================================
 # フロントエンドからのcredentials: "include"リクエストに対応するための設定
 
-# 許可するオリジン（環境変数で設定、カンマ区切り）
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
-).split(",")
+# 許可するオリジン（環境変数で設定）
+CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS")
 
 # クッキー（credentials）を含むリクエストを許可
 CORS_ALLOW_CREDENTIALS = True
