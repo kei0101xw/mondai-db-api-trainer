@@ -22,7 +22,21 @@
 
 .buttonContainer {
   display: flex;
-  gap: 12px;
+  gap: 50px;
+  align-items: center;
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+
+.buttonContainer.loading {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.userName {
+  color: #3a4e72;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .button {
@@ -35,6 +49,10 @@
   font-weight: 600;
 }
 
+.button:disabled {
+  cursor: not-allowed;
+}
+
 .loginButton {
   background-color: #3a4e72;
   color: #ffffff;
@@ -44,4 +62,10 @@
   border: 1px solid #3a4e72;
   background-color: #ffffff;
   color: #3a4e72;
+}
+
+.logoutButton {
+  background-color: #ffffff;
+  color: #3a4e72;
+  border: 1px solid #3a4e72;
 }
