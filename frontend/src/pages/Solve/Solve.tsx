@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { generateProblem, gradeAnswers } from '../../entities/problem/api';
 import type { GenerateProblemResponse } from '../../entities/problem/types';
+import { useAuth } from '../../contexts';
 import styles from './Solve.module.css';
 
 const Solve = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [problemData, setProblemData] = useState<GenerateProblemResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,8 +23,9 @@ const Solve = () => {
         const appScale = (searchParams.get('app_scale') as 'small' | 'medium' | 'large') || 'small';
         const mode = (searchParams.get('mode') as 'both' | 'api_only' | 'db_only') || 'both';
 
-        // SessionStorageのキーを生成
-        const storageKey = `mondai_problem_${difficulty}_${appScale}_${mode}`;
+        // SessionStorageのキーを生成（ログイン状態を含める）
+        const userPrefix = isAuthenticated ? `user_${user?.user_id}` : 'guest';
+        const storageKey = `mondai_problem_${userPrefix}_${difficulty}_${appScale}_${mode}`;
 
         // SessionStorageから既存の問題データを取得
         const cachedData = sessionStorage.getItem(storageKey);
@@ -58,7 +61,7 @@ const Solve = () => {
     };
 
     fetchProblem();
-  }, [searchParams]);
+  }, [searchParams, isAuthenticated, user?.user_id]);
 
   // 回答が入力されている場合、ページ離脱時に確認ダイアログを表示
   useEffect(() => {
@@ -81,10 +84,10 @@ const Solve = () => {
     };
   }, [answers]);
 
-  const handleAnswerChange = (problemId: number, value: string) => {
+  const handleAnswerChange = (key: number, value: string) => {
     setAnswers((prev) => ({
       ...prev,
-      [problemId]: value,
+      [key]: value,
     }));
   };
 
@@ -92,8 +95,9 @@ const Solve = () => {
     if (!problemData) return;
 
     // 回答が入力されているかチェック
-    const hasAnswers = problemData.problems.every((problem) => {
-      const key = problem.problem_id || problem.order_index;
+    // ゲストの場合は problem_id が undefined なので、order_index をフォールバックとして使用
+    const hasAnswers = problemData.problems.every((problem, index) => {
+      const key = problem.problem_id ?? index;
       return answers[key]?.trim();
     });
 
@@ -104,6 +108,10 @@ const Solve = () => {
 
     try {
       setSubmitting(true);
+
+      // デバッグ: problemDataの内容を確認
+      console.log('problemData:', problemData);
+      console.log('answers:', answers);
 
       // 採点リクエストを構築
       const gradeRequest =
@@ -117,11 +125,17 @@ const Solve = () => {
             }
           : {
               guest_token: problemData.guest_token!,
-              answers: problemData.problems.map((problem) => ({
-                order_index: problem.order_index,
-                answer_body: answers[problem.order_index],
-              })),
+              answers: problemData.problems.map((problem, index) => {
+                // ゲストの場合は配列インデックスをキーとして使用
+                const answerKey = index;
+                return {
+                  order_index: problem.order_index,
+                  answer_body: answers[answerKey],
+                };
+              }),
             };
+
+      console.log('gradeRequest:', gradeRequest);
 
       // 採点API呼び出し
       const gradeResponse = await gradeAnswers(gradeRequest);
@@ -191,21 +205,25 @@ const Solve = () => {
       <div className={styles.divider}></div>
       <div className={styles.rightPanel}>
         <h3>回答エリア</h3>
-        {problemData.problems.map((problem, index) => (
-          <div key={problem.problem_id || index} className={styles.answerSection}>
-            <h4>{problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答</h4>
-            <textarea
-              className={styles.answerTextarea}
-              placeholder={
-                problem.problem_type === 'db'
-                  ? 'CREATE TABLE などのDDL文を記述してください...'
-                  : 'API の擬似コードを記述してください...'
-              }
-              value={answers[problem.problem_id || index] || ''}
-              onChange={(e) => handleAnswerChange(problem.problem_id || index, e.target.value)}
-            />
-          </div>
-        ))}
+        {problemData.problems.map((problem, index) => {
+          // ログインユーザーは problem_id、ゲストは配列インデックスをキーとして使用
+          const answerKey = problem.problem_id ?? index;
+          return (
+            <div key={problem.problem_id || index} className={styles.answerSection}>
+              <h4>{problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答</h4>
+              <textarea
+                className={styles.answerTextarea}
+                placeholder={
+                  problem.problem_type === 'db'
+                    ? 'CREATE TABLE などのDDL文を記述してください...'
+                    : 'API の擬似コードを記述してください...'
+                }
+                value={answers[answerKey] || ''}
+                onChange={(e) => handleAnswerChange(answerKey, e.target.value)}
+              />
+            </div>
+          );
+        })}
         <button className={styles.submitButton} onClick={handleSubmit} disabled={submitting}>
           {submitting ? '採点中...' : '採点する'}
         </button>

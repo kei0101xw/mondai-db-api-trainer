@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { getCurrentUser, logoutUser as apiLogoutUser } from '../entities/user/api';
-import { fetchCsrfToken } from '../shared/api/client';
+import { fetchCsrfToken, clearProblemCache } from '../shared/api/client';
 import type { User } from '../entities/user/types';
 import { AuthContext } from './auth';
 import type { AuthContextType } from './auth';
@@ -34,11 +34,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       await apiLogoutUser();
       setUser(null);
+      // ログアウト時にSessionStorageの問題キャッシュをクリア
+      clearProblemCache();
       // ログアウト後に新しいCSRFトークンを取得
       await fetchCsrfToken();
     } catch (error) {
       console.error('Logout failed:', error);
       setUser(null);
+      // エラー時でもSessionStorageをクリア
+      clearProblemCache();
       // エラー時でもCSRFトークンを再取得
       try {
         await fetchCsrfToken();
@@ -50,7 +54,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshUser = async () => {
     try {
+      const previousUserId = user?.user_id;
       const currentUser = await getCurrentUser();
+      // ユーザーが変わった場合（ログイン直後など）はキャッシュクリア
+      if (previousUserId !== currentUser.user_id) {
+        clearProblemCache();
+      }
       setUser(currentUser);
     } catch {
       setUser(null);

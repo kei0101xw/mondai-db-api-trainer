@@ -5,6 +5,18 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
+/**
+ * SessionStorageから問題キャッシュをクリアする
+ */
+export function clearProblemCache(): void {
+  const keys = Object.keys(sessionStorage);
+  keys.forEach((key) => {
+    if (key.startsWith('mondai_problem_')) {
+      sessionStorage.removeItem(key);
+    }
+  });
+}
+
 export interface ApiResponse<T> {
   data: T | null;
   error: {
