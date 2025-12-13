@@ -297,7 +297,7 @@ class GradeAnswerView(APIView):
         """
         # 問題を取得
         try:
-            problem = Problem.objects.get(id=problem_id)
+            problem = Problem.objects.select_related("problem_group").get(id=problem_id)
         except Problem.DoesNotExist:
             return Response(
                 {
@@ -309,6 +309,20 @@ class GradeAnswerView(APIView):
                     },
                 },
                 status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 所有者チェック
+        if problem.problem_group.created_by_user != request.user:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "PERMISSION_DENIED",
+                        "message": "この問題にはアクセスできません",
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         # 採点実行
