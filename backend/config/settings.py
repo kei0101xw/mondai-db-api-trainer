@@ -173,7 +173,7 @@ REST_FRAMEWORK = {
 # フロントエンドからのcredentials: "include"リクエストに対応するための設定
 
 # 許可するオリジン（環境変数で設定）
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS")
+CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS").split(",")
 
 # クッキー（credentials）を含むリクエストを許可
 CORS_ALLOW_CREDENTIALS = True
