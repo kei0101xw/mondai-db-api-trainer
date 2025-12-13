@@ -1,5 +1,6 @@
 import os
 from typing import Any, Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from google import genai
 from google.genai import types
 
@@ -27,6 +28,8 @@ class GeminiClient:
 
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
         self.client = genai.Client(api_key=self.api_key)
+        # タイムアウト処理用のスレッドプール
+        self._executor = ThreadPoolExecutor(max_workers=1)
 
     def generate_content(
         self,
@@ -66,18 +69,30 @@ class GeminiClient:
 
             config = types.GenerateContentConfig(**config_params)
 
-            # API呼び出し（タイムアウトはSDKレベルでは制御できないため、signalを使わない）
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
+            # API呼び出しをタイムアウト付きで実行
+            # ThreadPoolExecutorを使用して、タイムアウトを確実に適用する
+            def _call_api():
+                return self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=config,
+                )
+
+            future = self._executor.submit(_call_api)
+            try:
+                response = future.result(timeout=timeout)
+            except FutureTimeoutError:
+                future.cancel()
+                raise GeminiClientError(f"Gemini API の呼び出しがタイムアウトしました（{timeout}秒）")
 
             if not response.text:
                 raise GeminiClientError("生成されたテキストが空です")
 
             return response.text
 
+        except GeminiClientError:
+            # 既にGeminiClientErrorの場合はそのまま再送出
+            raise
         except Exception as e:
             raise GeminiClientError(f"Gemini API の呼び出しに失敗しました: {e}") from e
 
@@ -87,6 +102,7 @@ class GeminiClient:
         *,
         temperature: float = 1.0,
         max_output_tokens: Optional[int] = None,
+        timeout: int = 60,
     ) -> str:
         """
         JSON形式でテキストを生成する
@@ -95,6 +111,7 @@ class GeminiClient:
             prompt: 生成プロンプト
             temperature: 生成のランダム性（0.0〜2.0）
             max_output_tokens: 最大トークン数
+            timeout: タイムアウト時間（秒）デフォルト60秒
 
         Returns:
             JSON形式の文字列
@@ -107,4 +124,5 @@ class GeminiClient:
             temperature=temperature,
             max_output_tokens=max_output_tokens,
             response_format="application/json",
+            timeout=timeout,
         )
