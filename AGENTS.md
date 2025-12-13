@@ -769,6 +769,7 @@ AI による自動採点と解説表示を行う。
   * **pre-commit**：frontend（ESLint + Prettier）／backend（Ruff format + Ruff check）
   * **commit-msg**：commitlint（Conventional Commits）
 
+* コマンドは各種 README.md に記載しています。
 ---
 
 ## 10. このファイルの使い方
