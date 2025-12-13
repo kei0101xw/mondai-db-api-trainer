@@ -384,6 +384,12 @@ class AnswerGrader:
         except json.JSONDecodeError as e:
             raise AnswerGraderError(f"JSONパースエラー: {e}") from e
 
+        # 結果が辞書型かチェック
+        if not isinstance(grading_result, dict):
+            raise AnswerGraderError(
+                f"採点結果がオブジェクトではありません（型: {type(grading_result).__name__}）"
+            )
+
         # バリデーション
         self._validate_grading_result(grading_result)
 

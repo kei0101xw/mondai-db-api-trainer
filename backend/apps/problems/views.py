@@ -162,7 +162,7 @@ class GenerateProblemView(APIView):
 
 class GradeAnswerView(APIView):
     """
-    POST /api/v1/grade
+    POST /api/v1/problem-groups/grade
 
     採点エンドポイント
     - ログインユーザー: problem_idで問題を特定し、DBに保存して採点結果を返す
