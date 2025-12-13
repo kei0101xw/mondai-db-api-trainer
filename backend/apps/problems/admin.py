@@ -18,7 +18,7 @@ class ProblemGroupAdmin(admin.ModelAdmin):
     """ProblemGroup用のAdmin設定."""
 
     list_display = [
-        "id",
+        "problem_group_id",
         "title",
         "difficulty",
         "app_scale",
@@ -47,7 +47,7 @@ class ProblemAdmin(admin.ModelAdmin):
     """Problem用のAdmin設定."""
 
     list_display = [
-        "id",
+        "problem_id",
         "problem_group",
         "problem_type",
         "order_index",

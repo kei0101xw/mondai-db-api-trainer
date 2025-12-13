@@ -42,6 +42,8 @@ class ErrorCode(str, Enum):
     GUEST_ALREADY_GENERATED = "GUEST_ALREADY_GENERATED"
     GUEST_TOKEN_INVALID = "GUEST_TOKEN_INVALID"
     GUEST_TOKEN_REQUIRED = "GUEST_TOKEN_REQUIRED"
+    GUEST_SESSION_NOT_FOUND = "GUEST_SESSION_NOT_FOUND"
+    GUEST_TOKEN_MISMATCH = "GUEST_TOKEN_MISMATCH"
 
     # ========================================
     # ビジネスロジックエラー (5xxx)
@@ -51,8 +53,16 @@ class ErrorCode(str, Enum):
     INVALID_MODE = "INVALID_MODE"
     INVALID_PROBLEM_TYPE = "INVALID_PROBLEM_TYPE"
     INVALID_GRADE = "INVALID_GRADE"
+    INVALID_INPUT_COMBINATION = "INVALID_INPUT_COMBINATION"
+    MISSING_PROBLEM_ID = "MISSING_PROBLEM_ID"
+    MISSING_GUEST_INFO = "MISSING_GUEST_INFO"
+    MISSING_ANSWER_BODY = "MISSING_ANSWER_BODY"
+    ANSWER_BODY_TOO_LONG = "ANSWER_BODY_TOO_LONG"
     AI_GENERATION_FAILED = "AI_GENERATION_FAILED"
     AI_GRADING_FAILED = "AI_GRADING_FAILED"
+    GENERATION_ERROR = "GENERATION_ERROR"
+    GRADING_ERROR = "GRADING_ERROR"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
 
     # ========================================
     # CSRF/セキュリティエラー (9xxx)
@@ -84,14 +94,24 @@ ERROR_MESSAGES = {
     ErrorCode.GUEST_ALREADY_GENERATED: "ゲストユーザーは1問のみ生成できます",
     ErrorCode.GUEST_TOKEN_INVALID: "無効なゲストトークンです",
     ErrorCode.GUEST_TOKEN_REQUIRED: "ゲストトークンが必要です",
+    ErrorCode.GUEST_SESSION_NOT_FOUND: "ゲストセッションが見つかりません",
+    ErrorCode.GUEST_TOKEN_MISMATCH: "ゲストトークンが一致しません",
     # ビジネスロジックエラー
     ErrorCode.INVALID_DIFFICULTY: "無効な難易度が指定されました",
     ErrorCode.INVALID_APP_SCALE: "無効なアプリ規模が指定されました",
     ErrorCode.INVALID_MODE: "無効なモードが指定されました",
     ErrorCode.INVALID_PROBLEM_TYPE: "無効な問題種別が指定されました",
     ErrorCode.INVALID_GRADE: "無効な評価が指定されました",
+    ErrorCode.INVALID_INPUT_COMBINATION: "入力の組み合わせが無効です",
+    ErrorCode.MISSING_PROBLEM_ID: "問題IDが必要です",
+    ErrorCode.MISSING_GUEST_INFO: "ゲスト情報が必要です",
+    ErrorCode.MISSING_ANSWER_BODY: "回答本文が必要です",
+    ErrorCode.ANSWER_BODY_TOO_LONG: "回答本文が長すぎます",
     ErrorCode.AI_GENERATION_FAILED: "問題生成に失敗しました",
     ErrorCode.AI_GRADING_FAILED: "採点処理に失敗しました",
+    ErrorCode.GENERATION_ERROR: "生成処理でエラーが発生しました",
+    ErrorCode.GRADING_ERROR: "採点処理でエラーが発生しました",
+    ErrorCode.PERMISSION_DENIED: "この操作を実行する権限がありません",
     # CSRF/セキュリティエラー
     ErrorCode.CSRF_TOKEN_MISSING: "CSRFトークンが見つかりません",
     ErrorCode.CSRF_TOKEN_INVALID: "CSRFトークンが無効です",
