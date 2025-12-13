@@ -83,7 +83,9 @@ class GeminiClient:
                 response = future.result(timeout=timeout)
             except FutureTimeoutError:
                 future.cancel()
-                raise GeminiClientError(f"Gemini API の呼び出しがタイムアウトしました（{timeout}秒）")
+                raise GeminiClientError(
+                    f"Gemini API の呼び出しがタイムアウトしました（{timeout}秒）"
+                )
 
             if not response.text:
                 raise GeminiClientError("生成されたテキストが空です")
