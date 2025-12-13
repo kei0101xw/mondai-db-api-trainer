@@ -152,3 +152,135 @@ class GenerateProblemView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class GradeAnswerView(APIView):
+    """
+    POST /api/v1/grade
+
+    採点エンドポイント
+    - ログインユーザー: problem_idで問題を特定し、DBに保存して採点結果を返す
+    - ゲストユーザー: order_index + guest_tokenで問題を特定し、採点結果のみ返す
+    """
+
+    def post(self, request):
+        """
+        回答を採点する
+
+        Request Body:
+            {
+                "problem_id": 123,           // ログインユーザーの場合必須
+                "order_index": 1,            // ゲストの場合必須
+                "guest_token": "...",        // ゲストの場合必須
+                "answer_body": "回答本文"
+            }
+
+        Response (200):
+            {
+                "data": {
+                    "grade": 2,
+                    "grade_display": "○",
+                    "model_answer": "模範解答",
+                    "explanation": "解説",
+                    "answer_id": 456  // ログインユーザーのみ
+                },
+                "error": null
+            }
+        """
+        # リクエストパラメータ取得
+        problem_id = request.data.get("problem_id")
+        order_index = request.data.get("order_index")
+        guest_token = request.data.get("guest_token")
+        answer_body = request.data.get("answer_body")
+
+        # answer_body バリデーション
+        if (
+            not answer_body
+            or not isinstance(answer_body, str)
+            or not answer_body.strip()
+        ):
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "MISSING_ANSWER_BODY",
+                        "message": "answer_body は必須です",
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # XOR入力ルールチェック
+        is_authenticated = request.user.is_authenticated
+        has_problem_id = problem_id is not None
+        has_guest_info = order_index is not None and guest_token is not None
+
+        # ログインユーザーの場合
+        if is_authenticated:
+            if not has_problem_id:
+                return Response(
+                    {
+                        "data": None,
+                        "error": {
+                            "code": "MISSING_PROBLEM_ID",
+                            "message": "ログインユーザーは problem_id が必須です",
+                            "details": None,
+                        },
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if has_guest_info:
+                return Response(
+                    {
+                        "data": None,
+                        "error": {
+                            "code": "INVALID_INPUT_COMBINATION",
+                            "message": "ログインユーザーは order_index と guest_token を指定できません",
+                            "details": None,
+                        },
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # ゲストユーザーの場合
+        else:
+            if has_problem_id:
+                return Response(
+                    {
+                        "data": None,
+                        "error": {
+                            "code": "INVALID_INPUT_COMBINATION",
+                            "message": "ゲストユーザーは problem_id を指定できません",
+                            "details": None,
+                        },
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not has_guest_info:
+                return Response(
+                    {
+                        "data": None,
+                        "error": {
+                            "code": "MISSING_GUEST_INFO",
+                            "message": "ゲストユーザーは order_index と guest_token が必須です",
+                            "details": None,
+                        },
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # TODO: ログインユーザー向け処理
+        # TODO: ゲストユーザー向け処理
+
+        return Response(
+            {
+                "data": None,
+                "error": {
+                    "code": "NOT_IMPLEMENTED",
+                    "message": "実装中",
+                    "details": None,
+                },
+            },
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
