@@ -6,7 +6,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from .services import ProblemGenerator, ProblemGeneratorError
+from .services import (
+    ProblemGenerator,
+    ProblemGeneratorError,
+    AnswerGrader,
+    AnswerGraderError,
+)
+from .models import Problem, Answer
 
 
 class GenerateProblemView(APIView):
@@ -270,7 +276,10 @@ class GradeAnswerView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # TODO: ログインユーザー向け処理
+        # ログインユーザー向け処理
+        if is_authenticated:
+            return self._handle_authenticated_user(request, problem_id, answer_body)
+
         # TODO: ゲストユーザー向け処理
 
         return Response(
@@ -283,4 +292,79 @@ class GradeAnswerView(APIView):
                 },
             },
             status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
+
+    def _handle_authenticated_user(self, request, problem_id, answer_body):
+        """
+        ログインユーザー向けの採点処理
+
+        Args:
+            request: リクエストオブジェクト
+            problem_id: 問題ID
+            answer_body: 回答本文
+
+        Returns:
+            Response: 採点結果のレスポンス
+        """
+        # 問題を取得
+        try:
+            problem = Problem.objects.get(id=problem_id)
+        except Problem.DoesNotExist:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "PROBLEM_NOT_FOUND",
+                        "message": f"問題ID {problem_id} が見つかりません",
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 採点実行
+        try:
+            grader = AnswerGrader()
+            grading_result = grader.grade(
+                problem_type=problem.problem_type,
+                problem_body=problem.problem_body,
+                answer_body=answer_body,
+            )
+        except AnswerGraderError as e:
+            return Response(
+                {
+                    "data": None,
+                    "error": {
+                        "code": "GRADING_ERROR",
+                        "message": str(e),
+                        "details": None,
+                    },
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Answerモデルに保存
+        answer = Answer.objects.create(
+            problem=problem,
+            user=request.user,
+            answer_body=answer_body,
+            grade=grading_result["grade"],
+        )
+
+        # grade_display を取得
+        grade_display = answer.get_grade_display()
+
+        # レスポンス構築
+        return Response(
+            {
+                "data": {
+                    "grade": grading_result["grade"],
+                    "grade_display": grade_display,
+                    "model_answer": grading_result["model_answer"],
+                    "explanation": grading_result["explanation"],
+                    "answer_id": answer.answer_id,
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
         )
