@@ -334,3 +334,16 @@ class ProblemGenerator:
         }
 
         return None, None, response_data
+
+
+class AnswerGrader:
+    """
+    Gemini APIを使用して解答を採点するサービスクラス
+    """
+
+    def __init__(self, gemini_client: Optional[GeminiClient] = None):
+        """
+        Args:
+            gemini_client: GeminiClientインスタンス（テスト用）
+        """
+        self.gemini_client = gemini_client or GeminiClient()
