@@ -1,11 +1,47 @@
-/* ヘッダー全体 */
 .header {
-  background-color: #cecece;
+  background-color: #ffffff;
   color: #fff;
   height: 50px;
-  padding: 10px 20px;
+  padding: 10px 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   position: relative;
+  border-bottom: 1px solid #dddddd;
+}
+
+.logo {
+  height: 40px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.logo:hover {
+  opacity: 0.8;
+}
+
+.buttonContainer {
+  display: flex;
+  gap: 12px;
+}
+
+.button {
+  width: 150px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  font-weight: 600;
+}
+
+.loginButton {
+  background-color: #3a4e72;
+  color: #ffffff;
+}
+
+.registerButton {
+  border: 1px solid #3a4e72;
+  background-color: #ffffff;
+  color: #3a4e72;
 }
