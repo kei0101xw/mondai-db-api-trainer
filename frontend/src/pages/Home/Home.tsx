@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/auth';
 import styles from './Home.module.css';
 
@@ -163,7 +163,7 @@ const Home = () => {
             <p className={styles.guestNotice}>
               ※ ログインしていない場合、1問しか解くことができません。
               <br />
-              複数の問題を解いて学習を進めるには、<a href="/register">ユーザー登録</a>
+              複数の問題を解いて学習を進めるには、<Link to="/register">ユーザー登録</Link>
               をしてください。
             </p>
           )}

@@ -5,10 +5,26 @@ import type { GenerateProblemResponse } from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
 import styles from './Solve.module.css';
 
+// バリデーション関数
+const parseDifficulty = (value: string | null): 'easy' | 'medium' | 'hard' => {
+  if (value === 'easy' || value === 'medium' || value === 'hard') return value;
+  return 'easy';
+};
+
+const parseAppScale = (value: string | null): 'small' | 'medium' | 'large' => {
+  if (value === 'small' || value === 'medium' || value === 'large') return value;
+  return 'small';
+};
+
+const parseMode = (value: string | null): 'both' | 'api_only' | 'db_only' => {
+  if (value === 'both' || value === 'api_only' || value === 'db_only') return value;
+  return 'both';
+};
+
 const Solve = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [problemData, setProblemData] = useState<GenerateProblemResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,12 +32,15 @@ const Solve = () => {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    // 認証状態が確定するまで待つ
+    if (isAuthLoading) return;
+
     const fetchProblem = async () => {
       try {
         setLoading(true);
-        const difficulty = (searchParams.get('difficulty') as 'easy' | 'medium' | 'hard') || 'easy';
-        const appScale = (searchParams.get('app_scale') as 'small' | 'medium' | 'large') || 'small';
-        const mode = (searchParams.get('mode') as 'both' | 'api_only' | 'db_only') || 'both';
+        const difficulty = parseDifficulty(searchParams.get('difficulty'));
+        const appScale = parseAppScale(searchParams.get('app_scale'));
+        const mode = parseMode(searchParams.get('mode'));
 
         // SessionStorageのキーを生成（ログイン状態を含める）
         const userPrefix = isAuthenticated ? `user_${user?.user_id}` : 'guest';
@@ -61,7 +80,7 @@ const Solve = () => {
     };
 
     fetchProblem();
-  }, [searchParams, isAuthenticated, user?.user_id]);
+  }, [searchParams, isAuthenticated, user?.user_id, isAuthLoading]);
 
   // 回答が入力されている場合、ページ離脱時に確認ダイアログを表示
   useEffect(() => {
@@ -109,9 +128,11 @@ const Solve = () => {
     try {
       setSubmitting(true);
 
-      // デバッグ: problemDataの内容を確認
-      console.log('problemData:', problemData);
-      console.log('answers:', answers);
+      // デバッグ: problemDataの内容を確認（開発環境のみ）
+      if (import.meta.env.DEV) {
+        console.log('problemData:', problemData);
+        console.log('answers:', answers);
+      }
 
       // 採点リクエストを構築
       const gradeRequest =
@@ -135,7 +156,9 @@ const Solve = () => {
               }),
             };
 
-      console.log('gradeRequest:', gradeRequest);
+      if (import.meta.env.DEV) {
+        console.log('gradeRequest:', gradeRequest);
+      }
 
       // 採点API呼び出し
       const gradeResponse = await gradeAnswers(gradeRequest);

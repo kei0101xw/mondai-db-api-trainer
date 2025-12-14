@@ -80,6 +80,25 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
   try {
     const response = await fetch(url, config);
+
+    // 204 No Content の場合は空データを返す
+    if (response.status === 204) {
+      return null as T;
+    }
+
+    // Content-Type をチェック
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      // 非JSONレスポンスの場合
+      const text = await response.text();
+      throw new ApiError(
+        'INVALID_RESPONSE',
+        `Expected JSON response but got ${contentType || 'unknown'}`,
+        { status: response.status, body: text.substring(0, 500) },
+        response.status,
+      );
+    }
+
     const json: ApiResponse<T> = await response.json();
 
     // エラーレスポンスの場合
