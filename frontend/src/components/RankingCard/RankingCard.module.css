@@ -1,0 +1,89 @@
+.card {
+  margin-top: 2rem;
+  padding: 1.25rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.title {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #3a4e72;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title::before {
+  content: '🏆';
+}
+
+.rankingList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rankingItem {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background-color: #ffffff;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.rankingItem:nth-child(1) {
+  background-color: #fef9c3;
+}
+
+.rankingItem:nth-child(2) {
+  background-color: #f1f5f9;
+}
+
+.rankingItem:nth-child(3) {
+  background-color: #fef3e2;
+}
+
+.rank {
+  width: 2rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.name {
+  flex: 1;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score {
+  font-weight: 600;
+  color: #3a4e72;
+  margin-left: 0.5rem;
+}
+
+.loading,
+.error,
+.empty {
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.error {
+  color: #dc2626;
+}
+
+.empty {
+  color: #6b7280;
+  font-style: italic;
+}

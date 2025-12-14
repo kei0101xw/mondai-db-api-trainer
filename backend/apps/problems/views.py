@@ -27,6 +27,7 @@ from .services import (
     AnswerGraderError,
 )
 from .models import ProblemGroup, Problem, Answer
+from .ranking_service import get_ranking, Period, ScoreType
 
 # answer_body の長さ制限（約10KB）
 MAX_ANSWER_BODY_LENGTH = 10000
@@ -484,6 +485,100 @@ class GradeAnswerView(APIView):
         return Response(
             {
                 "data": {"results": results},
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RankingView(APIView):
+    """
+    GET /api/v1/rankings
+
+    ランキング取得エンドポイント
+    - 期間（period）とスコア計算方式（score_type）を指定可能
+    - 認証不要（誰でも閲覧可能）
+    """
+
+    # 有効な期間の値
+    VALID_PERIODS = {"daily", "weekly", "monthly", "all"}
+    # 有効なスコアタイプの値
+    VALID_SCORE_TYPES = {"problem_count", "correct_count", "grade_sum"}
+
+    def get(self, request):
+        """
+        ランキングを取得する
+
+        Query Parameters:
+            period: "daily" | "weekly" | "monthly" | "all" (default: "daily")
+            score_type: "problem_count" | "correct_count" | "grade_sum" (default: "problem_count")
+            limit: 1-100 (default: 5)
+
+        Response (200):
+            {
+                "data": {
+                    "period": "daily",
+                    "score_type": "problem_count",
+                    "rankings": [
+                        {"rank": 1, "user_id": 1, "name": "Alice", "score": 15},
+                        ...
+                    ]
+                },
+                "error": null
+            }
+        """
+        # クエリパラメータ取得
+        period_str = request.query_params.get("period", "daily")
+        score_type_str = request.query_params.get("score_type", "problem_count")
+        limit_str = request.query_params.get("limit", "5")
+
+        # バリデーション: period
+        if period_str not in self.VALID_PERIODS:
+            raise ValidationError(
+                message=f"period は {', '.join(self.VALID_PERIODS)} のいずれかを指定してください"
+            )
+
+        # バリデーション: score_type
+        if score_type_str not in self.VALID_SCORE_TYPES:
+            raise ValidationError(
+                message=f"score_type は {', '.join(self.VALID_SCORE_TYPES)} のいずれかを指定してください"
+            )
+
+        # バリデーション: limit
+        try:
+            limit = int(limit_str)
+            if limit < 1 or limit > 100:
+                raise ValueError()
+        except ValueError:
+            raise ValidationError(
+                message="limit は 1 から 100 の整数を指定してください"
+            )
+
+        # Enum に変換
+        period = Period(period_str)
+        score_type = ScoreType(score_type_str)
+
+        # ランキング取得
+        rankings = get_ranking(period=period, score_type=score_type, limit=limit)
+
+        # レスポンス構築
+        rankings_data = [
+            {
+                "rank": entry.rank,
+                "user_id": entry.user_id,
+                "name": entry.name,
+                "score": entry.score,
+            }
+            for entry in rankings
+        ]
+
+        return Response(
+            {
+                "data": {
+                    "period": period_str,
+                    "score_type": score_type_str,
+                    "rankings": rankings_data,
+                },
                 "error": None,
             },
             status=status.HTTP_200_OK,

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/auth';
+import RankingCard from '../../components/RankingCard/RankingCard';
 import styles from './Home.module.css';
 
 const Home = () => {
@@ -20,6 +21,7 @@ const Home = () => {
       <div className={styles.leftPanel}>
         <h2>mondAI</h2>
         <p>DB設計・API設計の練習問題を解いてスキルアップしましょう！</p>
+        <RankingCard />
       </div>
       <div className={styles.divider}></div>
       <div className={styles.rightPanel}>
