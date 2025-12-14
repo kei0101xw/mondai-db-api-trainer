@@ -6,4 +6,10 @@ app_name = "problems"
 urlpatterns = [
     path("generate", views.GenerateProblemView.as_view(), name="generate"),
     path("grade", views.GradeAnswerView.as_view(), name="grade"),
+    path("mine", views.MyProblemGroupsView.as_view(), name="mine"),
+    path(
+        "<int:problem_group_id>",
+        views.ProblemGroupDetailView.as_view(),
+        name="detail",
+    ),
 ]

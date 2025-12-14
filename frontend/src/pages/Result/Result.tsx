@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { GenerateProblemResponse, GradeResult } from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
+import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
 import styles from './Result.module.css';
 
 type TabType = 'problem' | 'solution' | 'grading';
@@ -86,7 +87,11 @@ const Result = () => {
                   <span className={styles.gradeLabel}>{getGradeEmoji(result.grade)}</span>
                 </div>
                 <div className={styles.solutionBody}>
-                  <pre>{result.solution.solution_body}</pre>
+                  <CodeEditor
+                    value={result.solution.solution_body}
+                    language={result.problem_type === 'db' ? 'sql' : 'plain'}
+                    readOnly
+                  />
                 </div>
                 <div className={styles.explanation}>
                   <h4>解説</h4>
@@ -168,9 +173,11 @@ const Result = () => {
           return (
             <div key={answerKey} className={styles.answerSection}>
               <h4>{problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答</h4>
-              <div className={styles.answerDisplay}>
-                <pre>{answers[answerKey] || '（回答なし）'}</pre>
-              </div>
+              <CodeEditor
+                value={answers[answerKey] || '（回答なし）'}
+                language={problem.problem_type === 'db' ? 'sql' : 'plain'}
+                readOnly
+              />
             </div>
           );
         })}
