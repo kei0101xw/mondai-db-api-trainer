@@ -657,7 +657,9 @@ class ProblemGroupDetailView(APIView):
 
         # 所有者チェック
         if problem_group.created_by_user != request.user:
-            raise PermissionDeniedError(message="この問題グループにはアクセスできません")
+            raise PermissionDeniedError(
+                message="この問題グループにはアクセスできません"
+            )
 
         # 問題一覧を取得
         problems = list(problem_group.problems.all().order_by("order_index"))
@@ -799,6 +801,181 @@ class RankingView(APIView):
                     "period": period_str,
                     "score_type": score_type_str,
                     "rankings": rankings_data,
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DashboardView(APIView):
+    """
+    GET /api/v1/dashboard
+
+    ダッシュボード用の統計データを取得
+    - ログインユーザーのみ
+    """
+
+    def get(self, request):
+        """
+        ダッシュボードデータを取得する
+
+        Response (200):
+            {
+                "data": {
+                    "total_problems": 10,
+                    "total_answers": 15,
+                    "average_grade": 1.5,
+                    "grade_distribution": {"correct": 5, "partial": 7, "incorrect": 3},
+                    "difficulty_stats": {
+                        "easy": {"count": 5, "average_grade": 1.8},
+                        "medium": {"count": 3, "average_grade": 1.2},
+                        "hard": {"count": 2, "average_grade": 1.0}
+                    },
+                    "mode_stats": {
+                        "db_only": {"count": 4, "average_grade": 1.5},
+                        "api_only": {"count": 3, "average_grade": 1.3},
+                        "both": {"count": 3, "average_grade": 1.7}
+                    },
+                    "streak": {
+                        "current": 3,
+                        "longest": 7
+                    },
+                    "activity_calendar": [
+                        {"date": "2024-12-01", "count": 2, "grade_sum": 3},
+                        ...
+                    ]
+                },
+                "error": null
+            }
+        """
+        from datetime import timedelta
+        from django.utils import timezone
+        from django.db.models import Avg, Count, Sum
+        from django.db.models.functions import TruncDate
+
+        # 認証チェック
+        if not request.user.is_authenticated:
+            raise PermissionDeniedError(
+                message="ダッシュボードを利用するにはログインが必要です"
+            )
+
+        user = request.user
+
+        # 1. 基本統計
+        user_answers = Answer.objects.filter(user=user)
+        total_answers = user_answers.count()
+
+        # 解いた題材数（ユニークな problem_group）
+        answered_problem_groups = (
+            user_answers.values("problem__problem_group").distinct().count()
+        )
+
+        # 平均スコア
+        avg_grade = user_answers.aggregate(avg=Avg("grade"))["avg"] or 0
+
+        # 成績分布
+        grade_counts = user_answers.values("grade").annotate(count=Count("grade"))
+        grade_distribution = {"correct": 0, "partial": 0, "incorrect": 0}
+        for gc in grade_counts:
+            if gc["grade"] == 2:
+                grade_distribution["correct"] = gc["count"]
+            elif gc["grade"] == 1:
+                grade_distribution["partial"] = gc["count"]
+            elif gc["grade"] == 0:
+                grade_distribution["incorrect"] = gc["count"]
+
+        # 2. 難易度別統計
+        difficulty_stats = {}
+        for diff in ["easy", "medium", "hard"]:
+            diff_answers = user_answers.filter(problem__problem_group__difficulty=diff)
+            count = diff_answers.count()
+            avg = diff_answers.aggregate(avg=Avg("grade"))["avg"] or 0
+            difficulty_stats[diff] = {
+                "count": count,
+                "average_grade": round(avg, 2),
+            }
+
+        # 3. モード別統計
+        mode_stats = {}
+        for mode in ["db_only", "api_only", "both"]:
+            mode_answers = user_answers.filter(problem__problem_group__mode=mode)
+            count = mode_answers.count()
+            avg = mode_answers.aggregate(avg=Avg("grade"))["avg"] or 0
+            mode_stats[mode] = {
+                "count": count,
+                "average_grade": round(avg, 2),
+            }
+
+        # 4. ストリーク計算
+        # 日別のアクティビティを取得
+        daily_activity = (
+            user_answers.annotate(date=TruncDate("created_at"))
+            .values("date")
+            .distinct()
+            .order_by("-date")
+        )
+        activity_dates = set(d["date"] for d in daily_activity)
+
+        today = timezone.now().date()
+        current_streak = 0
+        longest_streak = 0
+        temp_streak = 0
+
+        # 現在のストリークを計算（今日または昨日から連続している日数）
+        check_date = today
+        if check_date not in activity_dates:
+            check_date = today - timedelta(days=1)
+
+        while check_date in activity_dates:
+            current_streak += 1
+            check_date -= timedelta(days=1)
+
+        # 最長ストリークを計算
+        if activity_dates:
+            sorted_dates = sorted(activity_dates)
+            temp_streak = 1
+            for i in range(1, len(sorted_dates)):
+                if (sorted_dates[i] - sorted_dates[i - 1]).days == 1:
+                    temp_streak += 1
+                else:
+                    longest_streak = max(longest_streak, temp_streak)
+                    temp_streak = 1
+            longest_streak = max(longest_streak, temp_streak)
+
+        # 5. カレンダーヒートマップ用データ（過去90日）
+        ninety_days_ago = today - timedelta(days=90)
+        calendar_data = (
+            user_answers.filter(created_at__date__gte=ninety_days_ago)
+            .annotate(date=TruncDate("created_at"))
+            .values("date")
+            .annotate(count=Count("answer_id"), grade_sum=Sum("grade"))
+            .order_by("date")
+        )
+
+        activity_calendar = [
+            {
+                "date": entry["date"].isoformat(),
+                "count": entry["count"],
+                "grade_sum": entry["grade_sum"] or 0,
+            }
+            for entry in calendar_data
+        ]
+
+        return Response(
+            {
+                "data": {
+                    "total_problem_groups": answered_problem_groups,
+                    "total_answers": total_answers,
+                    "average_grade": round(avg_grade, 2),
+                    "grade_distribution": grade_distribution,
+                    "difficulty_stats": difficulty_stats,
+                    "mode_stats": mode_stats,
+                    "streak": {
+                        "current": current_streak,
+                        "longest": longest_streak,
+                    },
+                    "activity_calendar": activity_calendar,
                 },
                 "error": None,
             },

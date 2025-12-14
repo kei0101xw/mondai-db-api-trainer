@@ -7,6 +7,7 @@ import type {
   MyProblemGroupsRequest,
   MyProblemGroupsResponse,
   ProblemGroupDetailResponse,
+  DashboardData,
 } from './types';
 
 export const generateProblem = async (
@@ -53,5 +54,13 @@ export const getProblemGroupDetail = async (
   const response = await apiClient.get<ProblemGroupDetailResponse>(
     `/problem-groups/${problemGroupId}`,
   );
+  return response;
+};
+
+/**
+ * ダッシュボードデータを取得
+ */
+export const getDashboard = async (): Promise<DashboardData> => {
+  const response = await apiClient.get<DashboardData>('/dashboard');
   return response;
 };

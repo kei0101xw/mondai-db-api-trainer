@@ -19,23 +19,18 @@ const History = () => {
   const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
 
   useEffect(() => {
-    console.log('History useEffect:', { isAuthLoading, user });
-
     // 認証状態の確認後、未ログインならログインページへ
     if (!isAuthLoading && !user) {
-      console.log('Redirecting to login...');
       navigate('/login', { state: { from: '/history' } });
       return;
     }
 
     if (!isAuthLoading && user) {
-      console.log('Fetching problem groups...');
       fetchProblemGroups();
     }
   }, [user, isAuthLoading, navigate]);
 
   const fetchProblemGroups = async () => {
-    console.log('fetchProblemGroups called');
     setIsLoading(true);
     setError(null);
     try {
@@ -49,13 +44,11 @@ const History = () => {
       if (modeFilter !== 'all') {
         params.mode = modeFilter;
       }
-      console.log('Calling API with params:', params);
       const response = await getMyProblemGroups(params);
-      console.log('API response:', response);
       setProblemGroups(response.items);
     } catch (err) {
       setError('問題一覧の取得に失敗しました');
-      console.error('API error:', err);
+      console.error(err);
     } finally {
       setIsLoading(false);
     }

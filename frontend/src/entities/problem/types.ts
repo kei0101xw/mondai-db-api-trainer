@@ -104,3 +104,42 @@ export interface ProblemGroupDetailResponse {
   problems: (Problem & { problem_id: number })[];
   answers: Record<number, AnswerHistory[]>;
 }
+
+// ダッシュボード用の型定義
+export interface GradeDistribution {
+  correct: number;
+  partial: number;
+  incorrect: number;
+}
+
+export interface DifficultyStats {
+  count: number;
+  average_grade: number;
+}
+
+export interface ModeStats {
+  count: number;
+  average_grade: number;
+}
+
+export interface StreakData {
+  current: number;
+  longest: number;
+}
+
+export interface ActivityCalendarEntry {
+  date: string;
+  count: number;
+  grade_sum: number;
+}
+
+export interface DashboardData {
+  total_problem_groups: number;
+  total_answers: number;
+  average_grade: number;
+  grade_distribution: GradeDistribution;
+  difficulty_stats: Record<'easy' | 'medium' | 'hard', DifficultyStats>;
+  mode_stats: Record<'db_only' | 'api_only' | 'both', ModeStats>;
+  streak: StreakData;
+  activity_calendar: ActivityCalendarEntry[];
+}

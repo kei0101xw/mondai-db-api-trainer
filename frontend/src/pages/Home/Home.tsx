@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/auth';
 import RankingCard from '../../components/RankingCard/RankingCard';
+import DashboardCard from '../../components/DashboardCard/DashboardCard';
 import styles from './Home.module.css';
+
+type LeftPanelTab = 'ranking' | 'mypage';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -10,6 +13,8 @@ const Home = () => {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
   const [appScale, setAppScale] = useState<'small' | 'medium' | 'large'>('small');
   const [mode, setMode] = useState<'both' | 'api_only' | 'db_only'>('both');
+  // ログインユーザーはマイページをデフォルト表示
+  const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTab>(user ? 'mypage' : 'ranking');
 
   const handleGenerate = () => {
     // パラメータをクエリパラメータとして渡してsolveページに遷移
@@ -21,7 +26,28 @@ const Home = () => {
       <div className={styles.leftPanel}>
         <h2>mondAI</h2>
         <p>DB設計・API設計の練習問題を解いてスキルアップしましょう！</p>
-        <RankingCard />
+
+        {/* タブ切り替え */}
+        <div className={styles.tabContainer}>
+          <button
+            className={`${styles.tab} ${leftPanelTab === 'ranking' ? styles.activeTab : ''}`}
+            onClick={() => setLeftPanelTab('ranking')}
+          >
+            ランキング
+          </button>
+          {user && (
+            <button
+              className={`${styles.tab} ${leftPanelTab === 'mypage' ? styles.activeTab : ''}`}
+              onClick={() => setLeftPanelTab('mypage')}
+            >
+              マイページ
+            </button>
+          )}
+        </div>
+
+        {/* タブコンテンツ */}
+        {leftPanelTab === 'ranking' && <RankingCard />}
+        {leftPanelTab === 'mypage' && user && <DashboardCard />}
       </div>
       <div className={styles.divider}></div>
       <div className={styles.rightPanel}>
