@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { generateProblem, gradeAnswers } from '../../entities/problem/api';
 import type { GenerateProblemResponse } from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
@@ -23,9 +23,16 @@ const parseMode = (value: string | null): 'both' | 'api_only' | 'db_only' => {
   return 'both';
 };
 
+// 再挑戦用のstate型
+interface RetryLocationState {
+  retryProblemGroupId?: number;
+  problemData?: GenerateProblemResponse;
+}
+
 const Solve = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [problemData, setProblemData] = useState<GenerateProblemResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +43,16 @@ const Solve = () => {
   useEffect(() => {
     // 認証状態が確定するまで待つ
     if (isAuthLoading) return;
+
+    // 再挑戦モードのチェック（location.stateから問題データを取得）
+    const state = location.state as RetryLocationState | null;
+    if (state?.problemData && state?.retryProblemGroupId) {
+      setProblemData(state.problemData);
+      setLoading(false);
+      // stateをクリア（ブラウザバックで再利用されないように）
+      window.history.replaceState({}, document.title);
+      return;
+    }
 
     const fetchProblem = async () => {
       try {
@@ -82,7 +99,7 @@ const Solve = () => {
     };
 
     fetchProblem();
-  }, [searchParams, isAuthenticated, user?.user_id, isAuthLoading]);
+  }, [searchParams, isAuthenticated, user?.user_id, isAuthLoading, location.state]);
 
   // 回答が入力されている場合、ページ離脱時に確認ダイアログを表示
   useEffect(() => {

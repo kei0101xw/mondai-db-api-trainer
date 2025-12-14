@@ -29,8 +29,8 @@ from .services import (
 from .models import ProblemGroup, Problem, Answer
 from .ranking_service import get_ranking, Period, ScoreType
 
-# answer_body の長さ制限（約10KB）
-MAX_ANSWER_BODY_LENGTH = 10000
+# answer_body の長さ制限（約50KB）
+MAX_ANSWER_BODY_LENGTH = 50000
 
 
 class GenerateProblemView(APIView):
@@ -485,6 +485,227 @@ class GradeAnswerView(APIView):
         return Response(
             {
                 "data": {"results": results},
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MyProblemGroupsView(APIView):
+    """
+    GET /api/v1/problem-groups/mine
+
+    自分が生成した題材一覧を取得
+    - ログインユーザーのみ
+    - 難易度・モードでフィルタリング可能
+    - created_at 降順で返却
+    """
+
+    def get(self, request):
+        """
+        自分の題材一覧を取得する
+
+        Query Parameters:
+            difficulty: "easy" | "medium" | "hard" (optional)
+            mode: "db_only" | "api_only" | "both" (optional)
+            cursor: ページネーション用カーソル (optional, 未実装)
+
+        Response (200):
+            {
+                "data": {
+                    "items": [
+                        {
+                            "problem_group_id": 123,
+                            "title": "SNSアプリ",
+                            "description": "...",
+                            "difficulty": "easy",
+                            "app_scale": "small",
+                            "mode": "both",
+                            "created_at": "...",
+                            "answer_summary": {
+                                "total_problems": 2,
+                                "answered_problems": 2,
+                                "latest_grades": [2, 1]
+                            }
+                        }
+                    ],
+                    "next_cursor": null
+                },
+                "error": null
+            }
+        """
+        # 認証チェック
+        if not request.user.is_authenticated:
+            raise PermissionDeniedError(
+                message="復習機能を利用するにはログインが必要です"
+            )
+
+        # クエリパラメータ取得
+        difficulty = request.query_params.get("difficulty")
+        mode = request.query_params.get("mode")
+
+        # フィルタ構築
+        filters = {"created_by_user": request.user}
+
+        if difficulty:
+            if difficulty not in ["easy", "medium", "hard"]:
+                raise ValidationError(
+                    message="difficulty は easy, medium, hard のいずれかを指定してください"
+                )
+            filters["difficulty"] = difficulty
+
+        if mode:
+            if mode not in ["db_only", "api_only", "both"]:
+                raise ValidationError(
+                    message="mode は db_only, api_only, both のいずれかを指定してください"
+                )
+            filters["mode"] = mode
+
+        # 題材一覧を取得（created_at 降順）
+        problem_groups = ProblemGroup.objects.filter(**filters).order_by("-created_at")
+
+        # レスポンス構築
+        items = []
+        for pg in problem_groups:
+            # 問題数と回答状況を取得
+            problems = list(pg.problems.all().order_by("order_index"))
+            total_problems = len(problems)
+
+            # ユーザーの最新回答を取得
+            latest_grades = []
+            answered_count = 0
+            for problem in problems:
+                latest_answer = (
+                    Answer.objects.filter(problem=problem, user=request.user)
+                    .order_by("-created_at")
+                    .first()
+                )
+                if latest_answer:
+                    latest_grades.append(latest_answer.grade)
+                    answered_count += 1
+                else:
+                    latest_grades.append(None)
+
+            items.append(
+                {
+                    "problem_group_id": pg.problem_group_id,
+                    "title": pg.title,
+                    "description": pg.description,
+                    "difficulty": pg.difficulty,
+                    "app_scale": pg.app_scale,
+                    "mode": pg.mode,
+                    "created_at": pg.created_at.isoformat(),
+                    "answer_summary": {
+                        "total_problems": total_problems,
+                        "answered_problems": answered_count,
+                        "latest_grades": latest_grades,
+                    },
+                }
+            )
+
+        return Response(
+            {
+                "data": {
+                    "items": items,
+                    "next_cursor": None,  # TODO: ページネーション実装時
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ProblemGroupDetailView(APIView):
+    """
+    GET /api/v1/problem-groups/{problem_group_id}
+
+    題材詳細を取得
+    - ログインユーザーのみ
+    - 自分の題材のみアクセス可能
+    """
+
+    def get(self, request, problem_group_id: int):
+        """
+        題材詳細を取得する
+
+        Response (200):
+            {
+                "data": {
+                    "problem_group": {...},
+                    "problems": [...],
+                    "answers": {
+                        "problem_id": [{"answer_id", "answer_body", "grade", "grade_display", "created_at"}, ...]
+                    }
+                },
+                "error": null
+            }
+        """
+        # 認証チェック
+        if not request.user.is_authenticated:
+            raise PermissionDeniedError(
+                message="復習機能を利用するにはログインが必要です"
+            )
+
+        # 題材を取得
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_NOT_FOUND,
+                message=f"問題グループID {problem_group_id} が見つかりません",
+            )
+
+        # 所有者チェック
+        if problem_group.created_by_user != request.user:
+            raise PermissionDeniedError(message="この問題グループにはアクセスできません")
+
+        # 問題一覧を取得
+        problems = list(problem_group.problems.all().order_by("order_index"))
+
+        # 各問題に対するユーザーの回答を取得
+        answers_by_problem = {}
+        grade_display_map = {0: "×", 1: "△", 2: "○"}
+
+        for problem in problems:
+            user_answers = Answer.objects.filter(
+                problem=problem, user=request.user
+            ).order_by("-created_at")
+
+            answers_by_problem[problem.problem_id] = [
+                {
+                    "answer_id": a.answer_id,
+                    "answer_body": a.answer_body,
+                    "grade": a.grade,
+                    "grade_display": grade_display_map.get(a.grade, "×"),
+                    "created_at": a.created_at.isoformat(),
+                }
+                for a in user_answers
+            ]
+
+        # レスポンス構築
+        return Response(
+            {
+                "data": {
+                    "problem_group": {
+                        "problem_group_id": problem_group.problem_group_id,
+                        "title": problem_group.title,
+                        "description": problem_group.description,
+                        "difficulty": problem_group.difficulty,
+                        "app_scale": problem_group.app_scale,
+                        "mode": problem_group.mode,
+                        "created_at": problem_group.created_at.isoformat(),
+                    },
+                    "problems": [
+                        {
+                            "problem_id": p.problem_id,
+                            "problem_type": p.problem_type,
+                            "order_index": p.order_index,
+                            "problem_body": p.problem_body,
+                        }
+                        for p in problems
+                    ],
+                    "answers": answers_by_problem,
+                },
                 "error": None,
             },
             status=status.HTTP_200_OK,

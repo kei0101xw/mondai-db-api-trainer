@@ -105,6 +105,7 @@ class ProblemGenerator:
             response_text = self.gemini_client.generate_content(
                 prompt=prompt,
                 temperature=0.8,
+                max_output_tokens=16384,  # 問題生成は長いレスポンスになるため十分なトークン数を確保
                 response_format="application/json",
                 timeout=120,  # 問題生成は複雑なため120秒のタイムアウトを設定
             )
@@ -412,6 +413,7 @@ class AnswerGrader:
             response_text = self.gemini_client.generate_content(
                 prompt=prompt,
                 temperature=0.3,  # 採点は一貫性を重視するため低めに設定
+                max_output_tokens=8192,  # 採点レスポンス用のトークン数を確保
                 response_format="application/json",
                 timeout=90,  # 採点処理は90秒のタイムアウトを設定
             )
@@ -548,6 +550,7 @@ class AnswerGrader:
             response_text = self.gemini_client.generate_content(
                 prompt=prompt,
                 temperature=0.3,  # 採点は一貫性を重視するため低めに設定
+                max_output_tokens=65536,  # 一括採点は複数問題の模範解答を含むため大きめに設定
                 response_format="application/json",
                 timeout=90,  # 一括採点は90秒のタイムアウトを設定
             )

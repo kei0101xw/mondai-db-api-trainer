@@ -1,10 +1,11 @@
 import styles from './Header.module.css';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts';
 import logo from '../../assets/logo.png';
 
 const Header = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, isLoading, logout, user } = useAuth();
 
   const goToHome = () => {
@@ -19,14 +20,38 @@ const Header = () => {
     navigate('/register');
   };
 
+  const goToHistory = () => {
+    navigate('/history');
+  };
+
   const handleLogout = async () => {
     await logout();
     navigate('/');
   };
 
+  const isActive = (path: string) => location.pathname === path;
+
   return (
     <header className={styles.header}>
-      <img src={logo} alt="mondAI" onClick={goToHome} className={styles.logo} />
+      <div className={styles.leftSection}>
+        <img src={logo} alt="mondAI" onClick={goToHome} className={styles.logo} />
+        {isAuthenticated && (
+          <nav className={styles.nav}>
+            <button
+              onClick={goToHome}
+              className={`${styles.navLink} ${isActive('/') ? styles.navLinkActive : ''}`}
+            >
+              ホーム
+            </button>
+            <button
+              onClick={goToHistory}
+              className={`${styles.navLink} ${location.pathname.startsWith('/history') ? styles.navLinkActive : ''}`}
+            >
+              復習
+            </button>
+          </nav>
+        )}
+      </div>
       <div className={`${styles.buttonContainer} ${isLoading ? styles.loading : ''}`}>
         {isAuthenticated ? (
           <>

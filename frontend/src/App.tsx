@@ -6,6 +6,8 @@ import Solve from './pages/Solve/Solve';
 import Result from './pages/Result/Result';
 import LoginUser from './pages/LoginUser/LoginUser';
 import RegisterUser from './pages/RegisterUser/RegisterUser';
+import History from './pages/History/History';
+import HistoryDetail from './pages/HistoryDetail/HistoryDetail';
 
 function App() {
   return (
@@ -17,6 +19,8 @@ function App() {
         <Route path="/result" element={<Result />} />
         <Route path="/login" element={<LoginUser />} />
         <Route path="/register" element={<RegisterUser />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/history/:problemGroupId" element={<HistoryDetail />} />
       </Routes>
     </AuthProvider>
   );

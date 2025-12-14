@@ -14,6 +14,12 @@
   z-index: 1000;
 }
 
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
 .logo {
   height: 40px;
   cursor: pointer;
@@ -22,6 +28,34 @@
 
 .logo:hover {
   opacity: 0.8;
+}
+
+.nav {
+  display: flex;
+  gap: 8px;
+}
+
+.navLink {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.navLink:hover {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.navLinkActive {
+  background-color: #e5e7eb;
+  color: #3a4e72;
+  font-weight: 600;
 }
 
 .buttonContainer {
