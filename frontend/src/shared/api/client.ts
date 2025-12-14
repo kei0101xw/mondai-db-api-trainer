@@ -45,9 +45,37 @@ interface RequestOptions extends RequestInit {
 }
 
 /**
- * API リクエストを送信する共通関数
+ * CSRFエラーかどうかを判定
+ * 明確にCSRF関連のエラーコードの場合、またはエラーコードがない403の場合にtrue
  */
-async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+function isCsrfError(status: number, errorCode?: string): boolean {
+  if (status !== 403) {
+    return false;
+  }
+
+  // 明確にCSRF関連のエラーコードの場合
+  if (errorCode === 'CSRF_TOKEN_MISSING' || errorCode === 'CSRF_TOKEN_INVALID') {
+    return true;
+  }
+
+  // エラーコードがない場合はDjangoのデフォルトCSRFエラーの可能性
+  // 他の明確なエラーコード（GUEST_LIMIT_REACHED等）はCSRFエラーではない
+  if (!errorCode || errorCode === 'UNKNOWN_ERROR') {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * API リクエストを送信する共通関数
+ * CSRFエラー時は自動的にトークンを再取得してリトライする
+ */
+async function request<T>(
+  endpoint: string,
+  options: RequestOptions = {},
+  isRetry: boolean = false,
+): Promise<T> {
   const { data, ...fetchOptions } = options;
 
   // デフォルト設定
@@ -65,13 +93,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     config.body = JSON.stringify(data);
   }
 
-  // CSRFトークンをCookieから取得して設定（POST/PUT/DELETE時）
+  // CSRFトークンを設定（POST/PUT/DELETE/PATCH時）
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(config.method || '')) {
-    const csrfToken = getCsrfToken();
-    if (csrfToken) {
+    const token = getCsrfToken();
+    if (token) {
       config.headers = {
         ...config.headers,
-        'X-CSRFToken': csrfToken,
+        'X-CSRFToken': token,
       };
     }
   }
@@ -91,6 +119,14 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     if (!contentType || !contentType.includes('application/json')) {
       // 非JSONレスポンスの場合
       const text = await response.text();
+
+      // CSRFエラーの可能性がある403で、まだリトライしていない場合
+      if (response.status === 403 && !isRetry) {
+        // CSRFトークンを再取得してリトライ
+        csrfToken = await fetchCsrfTokenDirect();
+        return request<T>(endpoint, options, true);
+      }
+
       throw new ApiError(
         'INVALID_RESPONSE',
         `Expected JSON response but got ${contentType || 'unknown'}`,
@@ -103,6 +139,12 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
     // エラーレスポンスの場合
     if (!response.ok || json.error) {
+      // CSRFエラーでまだリトライしていない場合、トークンを再取得してリトライ
+      if (!isRetry && isCsrfError(response.status, json.error?.code)) {
+        csrfToken = await fetchCsrfTokenDirect();
+        return request<T>(endpoint, options, true);
+      }
+
       throw new ApiError(
         json.error?.code || 'UNKNOWN_ERROR',
         json.error?.message || 'An unknown error occurred',
@@ -139,13 +181,51 @@ function getCsrfToken(): string | null {
 }
 
 /**
+ * CSRFトークンを直接取得する内部関数（リトライ用）
+ * request関数を使わず直接fetchしてCSRFトークンを取得する
+ */
+async function fetchCsrfTokenDirect(): Promise<string> {
+  const url = `${API_BASE_URL}/auth/csrf`;
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      'CSRF_FETCH_FAILED',
+      'Failed to fetch CSRF token',
+      undefined,
+      response.status,
+    );
+  }
+
+  const json: ApiResponse<{ csrfToken: string }> = await response.json();
+  if (!json.data?.csrfToken) {
+    throw new ApiError('CSRF_FETCH_FAILED', 'CSRF token not found in response');
+  }
+
+  return json.data.csrfToken;
+}
+
+/**
  * CSRFトークンを取得してメモリに保存する（初回のみ実行推奨）
  * クロスオリジン環境ではCookieからトークンを読み取れないため、
  * レスポンスボディから取得してメモリに保存する
  */
 export async function fetchCsrfToken(): Promise<void> {
-  const response = await request<{ csrfToken: string }>('/auth/csrf');
-  csrfToken = response.csrfToken;
+  csrfToken = await fetchCsrfTokenDirect();
+}
+
+/**
+ * CSRFトークンを更新してメモリに保存する
+ * セッション変更後などにトークンが無効になった場合に使用
+ */
+export async function refreshCsrfToken(): Promise<void> {
+  csrfToken = await fetchCsrfTokenDirect();
 }
 
 // HTTPメソッド別のヘルパー関数
