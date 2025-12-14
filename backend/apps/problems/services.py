@@ -106,6 +106,7 @@ class ProblemGenerator:
                 prompt=prompt,
                 temperature=0.8,
                 response_format="application/json",
+                timeout=120,  # 問題生成は複雑なため120秒のタイムアウトを設定
             )
         except GeminiClientError as e:
             raise ProblemGeneratorError(f"Gemini API呼び出しエラー: {e}") from e
@@ -412,6 +413,7 @@ class AnswerGrader:
                 prompt=prompt,
                 temperature=0.3,  # 採点は一貫性を重視するため低めに設定
                 response_format="application/json",
+                timeout=90,  # 採点処理は90秒のタイムアウトを設定
             )
         except GeminiClientError as e:
             raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
@@ -547,6 +549,7 @@ class AnswerGrader:
                 prompt=prompt,
                 temperature=0.3,  # 採点は一貫性を重視するため低めに設定
                 response_format="application/json",
+                timeout=90,  # 一括採点は90秒のタイムアウトを設定
             )
         except GeminiClientError as e:
             raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
