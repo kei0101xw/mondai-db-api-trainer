@@ -197,6 +197,15 @@ const Solve = () => {
     }
   };
 
+  const formatQuestionLabel = (
+    problem: GenerateProblemResponse['problems'][number],
+    index: number,
+  ) => {
+    const orderNumber = problem.order_index ?? index + 1;
+    const typeLabel = problem.problem_type === 'db' ? 'DB設計' : 'API設計';
+    return `問${orderNumber}(${typeLabel})`;
+  };
+
   // 問題生成中のローディング表示
   if (loading) {
     return <FullScreenLoader isLoading={true} message="問題生成中..." />;
@@ -235,9 +244,7 @@ const Solve = () => {
           <div className={styles.problemsList}>
             {problemData.problems.map((problem, index) => (
               <div key={problem.problem_id || index} className={styles.problemItem}>
-                <div className={styles.problemTypeLabel}>
-                  {problem.problem_type === 'db' ? 'DB設計' : 'API設計'}
-                </div>
+                <div className={styles.problemTypeLabel}>{formatQuestionLabel(problem, index)}</div>
                 <div className={styles.problemBody}>
                   <pre>{problem.problem_body}</pre>
                 </div>
@@ -253,9 +260,7 @@ const Solve = () => {
             const answerKey = problem.problem_id ?? index;
             return (
               <div key={problem.problem_id || index} className={styles.answerSection}>
-                <label className={styles.answerLabel}>
-                  {problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答
-                </label>
+                <label className={styles.answerLabel}>{formatQuestionLabel(problem, index)}</label>
                 <CodeEditor
                   value={answers[answerKey] || ''}
                   onChange={(value) => handleAnswerChange(answerKey, value)}
