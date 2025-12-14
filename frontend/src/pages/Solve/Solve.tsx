@@ -4,6 +4,7 @@ import { generateProblem, gradeAnswers } from '../../entities/problem/api';
 import type { GenerateProblemResponse } from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
 import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
+import { FullScreenLoader } from '../../shared/ui/Loading';
 import styles from './Solve.module.css';
 
 // バリデーション関数
@@ -179,12 +180,9 @@ const Solve = () => {
     }
   };
 
+  // 問題生成中のローディング表示
   if (loading) {
-    return (
-      <div className={styles.loadingContainer}>
-        <p>問題を生成中...</p>
-      </div>
-    );
+    return <FullScreenLoader isLoading={true} message="問題生成中..." />;
   }
 
   if (error) {
@@ -200,61 +198,66 @@ const Solve = () => {
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.leftPanel}>
-        <div className={styles.problemHeader}>
-          <h2>{problemData.problem_group.title}</h2>
-          <div className={styles.badges}>
-            <span className={styles.badge}>{problemData.problem_group.difficulty}</span>
-            <span className={styles.badge}>{problemData.problem_group.app_scale}</span>
-            <span className={styles.badge}>{problemData.problem_group.mode}</span>
+    <>
+      {/* 採点中のローディング表示 */}
+      <FullScreenLoader isLoading={submitting} message="採点中..." />
+
+      <div className={styles.container}>
+        <div className={styles.leftPanel}>
+          <div className={styles.problemHeader}>
+            <h2>{problemData.problem_group.title}</h2>
+            <div className={styles.badges}>
+              <span className={styles.badge}>{problemData.problem_group.difficulty}</span>
+              <span className={styles.badge}>{problemData.problem_group.app_scale}</span>
+              <span className={styles.badge}>{problemData.problem_group.mode}</span>
+            </div>
+          </div>
+          <div className={styles.problemDescription}>
+            <p>{problemData.problem_group.description}</p>
+          </div>
+          <div className={styles.problemsList}>
+            {problemData.problems.map((problem, index) => (
+              <div key={problem.problem_id || index} className={styles.problemItem}>
+                <div className={styles.problemTypeLabel}>
+                  {problem.problem_type === 'db' ? 'DB設計' : 'API設計'}
+                </div>
+                <div className={styles.problemBody}>
+                  <pre>{problem.problem_body}</pre>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-        <div className={styles.problemDescription}>
-          <p>{problemData.problem_group.description}</p>
-        </div>
-        <div className={styles.problemsList}>
-          {problemData.problems.map((problem, index) => (
-            <div key={problem.problem_id || index} className={styles.problemItem}>
-              <div className={styles.problemTypeLabel}>
-                {problem.problem_type === 'db' ? 'DB設計' : 'API設計'}
+        <div className={styles.divider}></div>
+        <div className={styles.rightPanel}>
+          <h3>回答エリア</h3>
+          {problemData.problems.map((problem, index) => {
+            // ログインユーザーは problem_id、ゲストは配列インデックスをキーとして使用
+            const answerKey = problem.problem_id ?? index;
+            return (
+              <div key={problem.problem_id || index} className={styles.answerSection}>
+                <label className={styles.answerLabel}>
+                  {problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答
+                </label>
+                <CodeEditor
+                  value={answers[answerKey] || ''}
+                  onChange={(value) => handleAnswerChange(answerKey, value)}
+                  language={problem.problem_type === 'db' ? 'sql' : 'plain'}
+                  placeholder={
+                    problem.problem_type === 'db'
+                      ? 'CREATE TABLE などのDDL文を記述してください...'
+                      : 'API の擬似コードを記述してください...'
+                  }
+                />
               </div>
-              <div className={styles.problemBody}>
-                <pre>{problem.problem_body}</pre>
-              </div>
-            </div>
-          ))}
+            );
+          })}
+          <button className={styles.submitButton} onClick={handleSubmit} disabled={submitting}>
+            {submitting ? '採点中...' : '採点する'}
+          </button>
         </div>
       </div>
-      <div className={styles.divider}></div>
-      <div className={styles.rightPanel}>
-        <h3>回答エリア</h3>
-        {problemData.problems.map((problem, index) => {
-          // ログインユーザーは problem_id、ゲストは配列インデックスをキーとして使用
-          const answerKey = problem.problem_id ?? index;
-          return (
-            <div key={problem.problem_id || index} className={styles.answerSection}>
-              <label className={styles.answerLabel}>
-                {problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答
-              </label>
-              <CodeEditor
-                value={answers[answerKey] || ''}
-                onChange={(value) => handleAnswerChange(answerKey, value)}
-                language={problem.problem_type === 'db' ? 'sql' : 'plain'}
-                placeholder={
-                  problem.problem_type === 'db'
-                    ? 'CREATE TABLE などのDDL文を記述してください...'
-                    : 'API の擬似コードを記述してください...'
-                }
-              />
-            </div>
-          );
-        })}
-        <button className={styles.submitButton} onClick={handleSubmit} disabled={submitting}>
-          {submitting ? '採点中...' : '採点する'}
-        </button>
-      </div>
-    </div>
+    </>
   );
 };
 
