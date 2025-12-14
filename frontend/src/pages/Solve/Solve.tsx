@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { generateProblem, gradeAnswers } from '../../entities/problem/api';
 import type { GenerateProblemResponse } from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
+import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
 import styles from './Solve.module.css';
 
 // バリデーション関数
@@ -231,23 +232,20 @@ const Solve = () => {
         {problemData.problems.map((problem, index) => {
           // ログインユーザーは problem_id、ゲストは配列インデックスをキーとして使用
           const answerKey = problem.problem_id ?? index;
-          const textareaId = `answer-${problem.problem_type}-${index}`;
           return (
             <div key={problem.problem_id || index} className={styles.answerSection}>
-              <label htmlFor={textareaId} className={styles.answerLabel}>
+              <label className={styles.answerLabel}>
                 {problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答
               </label>
-              <textarea
-                id={textareaId}
-                name={textareaId}
-                className={styles.answerTextarea}
+              <CodeEditor
+                value={answers[answerKey] || ''}
+                onChange={(value) => handleAnswerChange(answerKey, value)}
+                language={problem.problem_type === 'db' ? 'sql' : 'plain'}
                 placeholder={
                   problem.problem_type === 'db'
                     ? 'CREATE TABLE などのDDL文を記述してください...'
                     : 'API の擬似コードを記述してください...'
                 }
-                value={answers[answerKey] || ''}
-                onChange={(e) => handleAnswerChange(answerKey, e.target.value)}
               />
             </div>
           );
