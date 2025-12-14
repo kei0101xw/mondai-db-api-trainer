@@ -1,0 +1,155 @@
+.card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+}
+
+.loading,
+.error {
+  text-align: center;
+  padding: 20px;
+  color: #6b7280;
+}
+
+.error {
+  color: #ef4444;
+}
+
+/* サマリー */
+.summary {
+  display: flex;
+  justify-content: space-around;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* ストリーク */
+.streakSection {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.streakItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 10px;
+  background-color: #fef3c7;
+  border-radius: 8px;
+}
+
+.streakIcon {
+  font-size: 24px;
+}
+
+.streakInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.streakValue {
+  font-size: 16px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.streakLabel {
+  font-size: 11px;
+  color: #b45309;
+}
+
+/* チャートセクション */
+.chartSection {
+  margin-bottom: 16px;
+}
+
+.chartTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 12px 0;
+}
+
+.pieChartContainer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.legendContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #374151;
+}
+
+.legendColor {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legendLabel {
+  white-space: nowrap;
+}
+
+/* ヒートマップ */
+.heatmapContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.heatmapCell {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background-color: #e5e7eb;
+}
+
+/* 空状態 */
+.emptyState {
+  text-align: center;
+  padding: 20px;
+}
+
+.emptyState p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.emptyHint {
+  font-size: 12px;
+  margin-top: 8px !important;
+}

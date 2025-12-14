@@ -27,9 +27,10 @@ from .services import (
     AnswerGraderError,
 )
 from .models import ProblemGroup, Problem, Answer
+from .ranking_service import get_ranking, Period, ScoreType
 
-# answer_body の長さ制限（約10KB）
-MAX_ANSWER_BODY_LENGTH = 10000
+# answer_body の長さ制限（約50KB）
+MAX_ANSWER_BODY_LENGTH = 50000
 
 
 class GenerateProblemView(APIView):
@@ -484,6 +485,498 @@ class GradeAnswerView(APIView):
         return Response(
             {
                 "data": {"results": results},
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MyProblemGroupsView(APIView):
+    """
+    GET /api/v1/problem-groups/mine
+
+    自分が生成した題材一覧を取得
+    - ログインユーザーのみ
+    - 難易度・モードでフィルタリング可能
+    - created_at 降順で返却
+    """
+
+    def get(self, request):
+        """
+        自分の題材一覧を取得する
+
+        Query Parameters:
+            difficulty: "easy" | "medium" | "hard" (optional)
+            mode: "db_only" | "api_only" | "both" (optional)
+            cursor: ページネーション用カーソル (optional, 未実装)
+
+        Response (200):
+            {
+                "data": {
+                    "items": [
+                        {
+                            "problem_group_id": 123,
+                            "title": "SNSアプリ",
+                            "description": "...",
+                            "difficulty": "easy",
+                            "app_scale": "small",
+                            "mode": "both",
+                            "created_at": "...",
+                            "answer_summary": {
+                                "total_problems": 2,
+                                "answered_problems": 2,
+                                "latest_grades": [2, 1]
+                            }
+                        }
+                    ],
+                    "next_cursor": null
+                },
+                "error": null
+            }
+        """
+        # 認証チェック
+        if not request.user.is_authenticated:
+            raise PermissionDeniedError(
+                message="復習機能を利用するにはログインが必要です"
+            )
+
+        # クエリパラメータ取得
+        difficulty = request.query_params.get("difficulty")
+        mode = request.query_params.get("mode")
+
+        # フィルタ構築
+        filters = {"created_by_user": request.user}
+
+        if difficulty:
+            if difficulty not in ["easy", "medium", "hard"]:
+                raise ValidationError(
+                    message="difficulty は easy, medium, hard のいずれかを指定してください"
+                )
+            filters["difficulty"] = difficulty
+
+        if mode:
+            if mode not in ["db_only", "api_only", "both"]:
+                raise ValidationError(
+                    message="mode は db_only, api_only, both のいずれかを指定してください"
+                )
+            filters["mode"] = mode
+
+        # 題材一覧を取得（created_at 降順）
+        problem_groups = ProblemGroup.objects.filter(**filters).order_by("-created_at")
+
+        # レスポンス構築
+        items = []
+        for pg in problem_groups:
+            # 問題数と回答状況を取得
+            problems = list(pg.problems.all().order_by("order_index"))
+            total_problems = len(problems)
+
+            # ユーザーの最新回答を取得
+            latest_grades = []
+            answered_count = 0
+            for problem in problems:
+                latest_answer = (
+                    Answer.objects.filter(problem=problem, user=request.user)
+                    .order_by("-created_at")
+                    .first()
+                )
+                if latest_answer:
+                    latest_grades.append(latest_answer.grade)
+                    answered_count += 1
+                else:
+                    latest_grades.append(None)
+
+            items.append(
+                {
+                    "problem_group_id": pg.problem_group_id,
+                    "title": pg.title,
+                    "description": pg.description,
+                    "difficulty": pg.difficulty,
+                    "app_scale": pg.app_scale,
+                    "mode": pg.mode,
+                    "created_at": pg.created_at.isoformat(),
+                    "answer_summary": {
+                        "total_problems": total_problems,
+                        "answered_problems": answered_count,
+                        "latest_grades": latest_grades,
+                    },
+                }
+            )
+
+        return Response(
+            {
+                "data": {
+                    "items": items,
+                    "next_cursor": None,  # TODO: ページネーション実装時
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ProblemGroupDetailView(APIView):
+    """
+    GET /api/v1/problem-groups/{problem_group_id}
+
+    題材詳細を取得
+    - ログインユーザーのみ
+    - 自分の題材のみアクセス可能
+    """
+
+    def get(self, request, problem_group_id: int):
+        """
+        題材詳細を取得する
+
+        Response (200):
+            {
+                "data": {
+                    "problem_group": {...},
+                    "problems": [...],
+                    "answers": {
+                        "problem_id": [{"answer_id", "answer_body", "grade", "grade_display", "created_at"}, ...]
+                    }
+                },
+                "error": null
+            }
+        """
+        # 認証チェック
+        if not request.user.is_authenticated:
+            raise PermissionDeniedError(
+                message="復習機能を利用するにはログインが必要です"
+            )
+
+        # 題材を取得
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_NOT_FOUND,
+                message=f"問題グループID {problem_group_id} が見つかりません",
+            )
+
+        # 所有者チェック
+        if problem_group.created_by_user != request.user:
+            raise PermissionDeniedError(
+                message="この問題グループにはアクセスできません"
+            )
+
+        # 問題一覧を取得
+        problems = list(problem_group.problems.all().order_by("order_index"))
+
+        # 各問題に対するユーザーの回答を取得
+        answers_by_problem = {}
+        grade_display_map = {0: "×", 1: "△", 2: "○"}
+
+        for problem in problems:
+            user_answers = Answer.objects.filter(
+                problem=problem, user=request.user
+            ).order_by("-created_at")
+
+            answers_by_problem[problem.problem_id] = [
+                {
+                    "answer_id": a.answer_id,
+                    "answer_body": a.answer_body,
+                    "grade": a.grade,
+                    "grade_display": grade_display_map.get(a.grade, "×"),
+                    "created_at": a.created_at.isoformat(),
+                }
+                for a in user_answers
+            ]
+
+        # レスポンス構築
+        return Response(
+            {
+                "data": {
+                    "problem_group": {
+                        "problem_group_id": problem_group.problem_group_id,
+                        "title": problem_group.title,
+                        "description": problem_group.description,
+                        "difficulty": problem_group.difficulty,
+                        "app_scale": problem_group.app_scale,
+                        "mode": problem_group.mode,
+                        "created_at": problem_group.created_at.isoformat(),
+                    },
+                    "problems": [
+                        {
+                            "problem_id": p.problem_id,
+                            "problem_type": p.problem_type,
+                            "order_index": p.order_index,
+                            "problem_body": p.problem_body,
+                        }
+                        for p in problems
+                    ],
+                    "answers": answers_by_problem,
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RankingView(APIView):
+    """
+    GET /api/v1/rankings
+
+    ランキング取得エンドポイント
+    - 期間（period）とスコア計算方式（score_type）を指定可能
+    - 認証不要（誰でも閲覧可能）
+    """
+
+    # 有効な期間の値
+    VALID_PERIODS = {"daily", "weekly", "monthly", "all"}
+    # 有効なスコアタイプの値
+    VALID_SCORE_TYPES = {"problem_count", "correct_count", "grade_sum"}
+
+    def get(self, request):
+        """
+        ランキングを取得する
+
+        Query Parameters:
+            period: "daily" | "weekly" | "monthly" | "all" (default: "daily")
+            score_type: "problem_count" | "correct_count" | "grade_sum" (default: "problem_count")
+            limit: 1-100 (default: 5)
+
+        Response (200):
+            {
+                "data": {
+                    "period": "daily",
+                    "score_type": "problem_count",
+                    "rankings": [
+                        {"rank": 1, "user_id": 1, "name": "Alice", "score": 15},
+                        ...
+                    ]
+                },
+                "error": null
+            }
+        """
+        # クエリパラメータ取得
+        period_str = request.query_params.get("period", "daily")
+        score_type_str = request.query_params.get("score_type", "problem_count")
+        limit_str = request.query_params.get("limit", "5")
+
+        # バリデーション: period
+        if period_str not in self.VALID_PERIODS:
+            raise ValidationError(
+                message=f"period は {', '.join(self.VALID_PERIODS)} のいずれかを指定してください"
+            )
+
+        # バリデーション: score_type
+        if score_type_str not in self.VALID_SCORE_TYPES:
+            raise ValidationError(
+                message=f"score_type は {', '.join(self.VALID_SCORE_TYPES)} のいずれかを指定してください"
+            )
+
+        # バリデーション: limit
+        try:
+            limit = int(limit_str)
+            if limit < 1 or limit > 100:
+                raise ValueError()
+        except ValueError:
+            raise ValidationError(
+                message="limit は 1 から 100 の整数を指定してください"
+            )
+
+        # Enum に変換
+        period = Period(period_str)
+        score_type = ScoreType(score_type_str)
+
+        # ランキング取得
+        rankings = get_ranking(period=period, score_type=score_type, limit=limit)
+
+        # レスポンス構築
+        rankings_data = [
+            {
+                "rank": entry.rank,
+                "user_id": entry.user_id,
+                "name": entry.name,
+                "score": entry.score,
+            }
+            for entry in rankings
+        ]
+
+        return Response(
+            {
+                "data": {
+                    "period": period_str,
+                    "score_type": score_type_str,
+                    "rankings": rankings_data,
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DashboardView(APIView):
+    """
+    GET /api/v1/dashboard
+
+    ダッシュボード用の統計データを取得
+    - ログインユーザーのみ
+    """
+
+    def get(self, request):
+        """
+        ダッシュボードデータを取得する
+
+        Response (200):
+            {
+                "data": {
+                    "total_problems": 10,
+                    "total_answers": 15,
+                    "average_grade": 1.5,
+                    "grade_distribution": {"correct": 5, "partial": 7, "incorrect": 3},
+                    "difficulty_stats": {
+                        "easy": {"count": 5, "average_grade": 1.8},
+                        "medium": {"count": 3, "average_grade": 1.2},
+                        "hard": {"count": 2, "average_grade": 1.0}
+                    },
+                    "mode_stats": {
+                        "db_only": {"count": 4, "average_grade": 1.5},
+                        "api_only": {"count": 3, "average_grade": 1.3},
+                        "both": {"count": 3, "average_grade": 1.7}
+                    },
+                    "streak": {
+                        "current": 3,
+                        "longest": 7
+                    },
+                    "activity_calendar": [
+                        {"date": "2024-12-01", "count": 2, "grade_sum": 3},
+                        ...
+                    ]
+                },
+                "error": null
+            }
+        """
+        from datetime import timedelta
+        from django.utils import timezone
+        from django.db.models import Avg, Count, Sum
+        from django.db.models.functions import TruncDate
+
+        # 認証チェック
+        if not request.user.is_authenticated:
+            raise PermissionDeniedError(
+                message="ダッシュボードを利用するにはログインが必要です"
+            )
+
+        user = request.user
+
+        # 1. 基本統計
+        user_answers = Answer.objects.filter(user=user)
+        total_answers = user_answers.count()
+
+        # 解いた題材数（ユニークな problem_group）
+        answered_problem_groups = (
+            user_answers.values("problem__problem_group").distinct().count()
+        )
+
+        # 平均スコア
+        avg_grade = user_answers.aggregate(avg=Avg("grade"))["avg"] or 0
+
+        # 成績分布
+        grade_counts = user_answers.values("grade").annotate(count=Count("grade"))
+        grade_distribution = {"correct": 0, "partial": 0, "incorrect": 0}
+        for gc in grade_counts:
+            if gc["grade"] == 2:
+                grade_distribution["correct"] = gc["count"]
+            elif gc["grade"] == 1:
+                grade_distribution["partial"] = gc["count"]
+            elif gc["grade"] == 0:
+                grade_distribution["incorrect"] = gc["count"]
+
+        # 2. 難易度別統計
+        difficulty_stats = {}
+        for diff in ["easy", "medium", "hard"]:
+            diff_answers = user_answers.filter(problem__problem_group__difficulty=diff)
+            count = diff_answers.count()
+            avg = diff_answers.aggregate(avg=Avg("grade"))["avg"] or 0
+            difficulty_stats[diff] = {
+                "count": count,
+                "average_grade": round(avg, 2),
+            }
+
+        # 3. モード別統計
+        mode_stats = {}
+        for mode in ["db_only", "api_only", "both"]:
+            mode_answers = user_answers.filter(problem__problem_group__mode=mode)
+            count = mode_answers.count()
+            avg = mode_answers.aggregate(avg=Avg("grade"))["avg"] or 0
+            mode_stats[mode] = {
+                "count": count,
+                "average_grade": round(avg, 2),
+            }
+
+        # 4. ストリーク計算
+        # 日別のアクティビティを取得
+        daily_activity = (
+            user_answers.annotate(date=TruncDate("created_at"))
+            .values("date")
+            .distinct()
+            .order_by("-date")
+        )
+        activity_dates = set(d["date"] for d in daily_activity)
+
+        today = timezone.now().date()
+        current_streak = 0
+        longest_streak = 0
+        temp_streak = 0
+
+        # 現在のストリークを計算（今日または昨日から連続している日数）
+        check_date = today
+        if check_date not in activity_dates:
+            check_date = today - timedelta(days=1)
+
+        while check_date in activity_dates:
+            current_streak += 1
+            check_date -= timedelta(days=1)
+
+        # 最長ストリークを計算
+        if activity_dates:
+            sorted_dates = sorted(activity_dates)
+            temp_streak = 1
+            for i in range(1, len(sorted_dates)):
+                if (sorted_dates[i] - sorted_dates[i - 1]).days == 1:
+                    temp_streak += 1
+                else:
+                    longest_streak = max(longest_streak, temp_streak)
+                    temp_streak = 1
+            longest_streak = max(longest_streak, temp_streak)
+
+        # 5. カレンダーヒートマップ用データ（過去90日）
+        ninety_days_ago = today - timedelta(days=90)
+        calendar_data = (
+            user_answers.filter(created_at__date__gte=ninety_days_ago)
+            .annotate(date=TruncDate("created_at"))
+            .values("date")
+            .annotate(count=Count("answer_id"), grade_sum=Sum("grade"))
+            .order_by("date")
+        )
+
+        activity_calendar = [
+            {
+                "date": entry["date"].isoformat(),
+                "count": entry["count"],
+                "grade_sum": entry["grade_sum"] or 0,
+            }
+            for entry in calendar_data
+        ]
+
+        return Response(
+            {
+                "data": {
+                    "total_problem_groups": answered_problem_groups,
+                    "total_answers": total_answers,
+                    "average_grade": round(avg_grade, 2),
+                    "grade_distribution": grade_distribution,
+                    "difficulty_stats": difficulty_stats,
+                    "mode_stats": mode_stats,
+                    "streak": {
+                        "current": current_streak,
+                        "longest": longest_streak,
+                    },
+                    "activity_calendar": activity_calendar,
+                },
                 "error": None,
             },
             status=status.HTTP_200_OK,

@@ -125,25 +125,27 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 }
 
 /**
- * CookieからCSRFトークンを取得
+ * CSRFトークンをメモリに保持
+ * クロスオリジン環境ではCookieからトークンを読み取れないため、
+ * レスポンスボディから取得したトークンをメモリに保存する
+ */
+let csrfToken: string | null = null;
+
+/**
+ * メモリからCSRFトークンを取得
  */
 function getCsrfToken(): string | null {
-  const name = 'csrftoken';
-  const cookies = document.cookie.split(';');
-  for (const cookie of cookies) {
-    const [key, value] = cookie.trim().split('=');
-    if (key === name) {
-      return decodeURIComponent(value);
-    }
-  }
-  return null;
+  return csrfToken;
 }
 
 /**
- * CSRFトークンを取得する（初回のみ実行推奨）
+ * CSRFトークンを取得してメモリに保存する（初回のみ実行推奨）
+ * クロスオリジン環境ではCookieからトークンを読み取れないため、
+ * レスポンスボディから取得してメモリに保存する
  */
 export async function fetchCsrfToken(): Promise<void> {
-  await request('/auth/csrf');
+  const response = await request<{ csrfToken: string }>('/auth/csrf');
+  csrfToken = response.csrfToken;
 }
 
 // HTTPメソッド別のヘルパー関数

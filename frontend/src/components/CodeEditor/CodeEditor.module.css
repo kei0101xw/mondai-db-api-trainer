@@ -1,0 +1,47 @@
+.editor {
+  width: 100%;
+  font-size: 14px;
+}
+
+.editor :global(.cm-editor) {
+  max-height: 400px;
+}
+
+.readOnly {
+  opacity: 0.95;
+}
+
+.readOnly :global(.cm-editor) {
+  background-color: #fafafa;
+}
+
+.readOnly :global(.cm-content) {
+  cursor: default;
+}
+
+/* SQL シンタックスハイライトのカスタマイズ */
+.editor :global(.cm-editor) :global(.tok-keyword) {
+  color: #0550ae;
+  font-weight: 600;
+}
+
+.editor :global(.cm-editor) :global(.tok-string) {
+  color: #0a3069;
+}
+
+.editor :global(.cm-editor) :global(.tok-number) {
+  color: #0550ae;
+}
+
+.editor :global(.cm-editor) :global(.tok-comment) {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.editor :global(.cm-editor) :global(.tok-typeName) {
+  color: #8250df;
+}
+
+.editor :global(.cm-editor) :global(.tok-operator) {
+  color: #24292f;
+}

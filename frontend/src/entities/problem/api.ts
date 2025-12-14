@@ -4,6 +4,10 @@ import type {
   GenerateProblemResponse,
   GradeRequest,
   GradeResponse,
+  MyProblemGroupsRequest,
+  MyProblemGroupsResponse,
+  ProblemGroupDetailResponse,
+  DashboardData,
 } from './types';
 
 export const generateProblem = async (
@@ -18,5 +22,45 @@ export const generateProblem = async (
 
 export const gradeAnswers = async (params: GradeRequest): Promise<GradeResponse> => {
   const response = await apiClient.post<GradeResponse>('/problem-groups/grade', params);
+  return response;
+};
+
+/**
+ * 自分の題材一覧を取得
+ */
+export const getMyProblemGroups = async (
+  params?: MyProblemGroupsRequest,
+): Promise<MyProblemGroupsResponse> => {
+  const searchParams = new URLSearchParams();
+  if (params?.difficulty) {
+    searchParams.append('difficulty', params.difficulty);
+  }
+  if (params?.mode) {
+    searchParams.append('mode', params.mode);
+  }
+  const queryString = searchParams.toString();
+  const url = `/problem-groups/mine${queryString ? `?${queryString}` : ''}`;
+
+  const response = await apiClient.get<MyProblemGroupsResponse>(url);
+  return response;
+};
+
+/**
+ * 題材詳細を取得
+ */
+export const getProblemGroupDetail = async (
+  problemGroupId: number,
+): Promise<ProblemGroupDetailResponse> => {
+  const response = await apiClient.get<ProblemGroupDetailResponse>(
+    `/problem-groups/${problemGroupId}`,
+  );
+  return response;
+};
+
+/**
+ * ダッシュボードデータを取得
+ */
+export const getDashboard = async (): Promise<DashboardData> => {
+  const response = await apiClient.get<DashboardData>('/dashboard');
   return response;
 };
