@@ -85,6 +85,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+# SSL設定: 本番環境ではrequire、ローカル開発ではprefer（SSLなしでもOK）
+DB_SSL_MODE = os.getenv("DB_SSL_MODE", "prefer" if DEBUG else "require")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -95,7 +98,7 @@ DATABASES = {
         "PORT": os.getenv("DB_PORT", "5432"),
         "CONN_MAX_AGE": 0,  # プール相性のため毎回切断寄り
         "DISABLE_SERVER_SIDE_CURSORS": True,
-        "OPTIONS": {"sslmode": "require"},
+        "OPTIONS": {"sslmode": DB_SSL_MODE},
     }
 }
 
