@@ -36,12 +36,13 @@ const Home = () => {
           }}
         >
           {/* 難易度 */}
-          <div className={styles.formGroup}>
-            <label className={styles.label}>難易度</label>
+          <fieldset className={styles.formGroup}>
+            <legend className={styles.label}>難易度</legend>
             <div className={styles.radioGroup}>
-              <label className={styles.radioLabel}>
+              <label htmlFor="difficulty-easy" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="difficulty-easy"
                   name="difficulty"
                   value="easy"
                   checked={difficulty === 'easy'}
@@ -50,9 +51,10 @@ const Home = () => {
                 />
                 <span>Easy</span>
               </label>
-              <label className={styles.radioLabel}>
+              <label htmlFor="difficulty-medium" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="difficulty-medium"
                   name="difficulty"
                   value="medium"
                   checked={difficulty === 'medium'}
@@ -61,9 +63,10 @@ const Home = () => {
                 />
                 <span>Medium</span>
               </label>
-              <label className={styles.radioLabel}>
+              <label htmlFor="difficulty-hard" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="difficulty-hard"
                   name="difficulty"
                   value="hard"
                   checked={difficulty === 'hard'}
@@ -73,15 +76,16 @@ const Home = () => {
                 <span>Hard</span>
               </label>
             </div>
-          </div>
+          </fieldset>
 
           {/* アプリ規模 */}
-          <div className={styles.formGroup}>
-            <label className={styles.label}>アプリ規模</label>
+          <fieldset className={styles.formGroup}>
+            <legend className={styles.label}>アプリ規模</legend>
             <div className={styles.radioGroup}>
-              <label className={styles.radioLabel}>
+              <label htmlFor="appScale-small" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="appScale-small"
                   name="appScale"
                   value="small"
                   checked={appScale === 'small'}
@@ -90,9 +94,10 @@ const Home = () => {
                 />
                 <span>Small</span>
               </label>
-              <label className={styles.radioLabel}>
+              <label htmlFor="appScale-medium" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="appScale-medium"
                   name="appScale"
                   value="medium"
                   checked={appScale === 'medium'}
@@ -101,9 +106,10 @@ const Home = () => {
                 />
                 <span>Medium</span>
               </label>
-              <label className={styles.radioLabel}>
+              <label htmlFor="appScale-large" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="appScale-large"
                   name="appScale"
                   value="large"
                   checked={appScale === 'large'}
@@ -113,15 +119,16 @@ const Home = () => {
                 <span>Large</span>
               </label>
             </div>
-          </div>
+          </fieldset>
 
           {/* 問題タイプ */}
-          <div className={styles.formGroup}>
-            <label className={styles.label}>問題タイプ</label>
+          <fieldset className={styles.formGroup}>
+            <legend className={styles.label}>問題タイプ</legend>
             <div className={styles.radioGroup}>
-              <label className={styles.radioLabel}>
+              <label htmlFor="mode-both" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="mode-both"
                   name="mode"
                   value="both"
                   checked={mode === 'both'}
@@ -130,9 +137,10 @@ const Home = () => {
                 />
                 <span>DB・API設計</span>
               </label>
-              <label className={styles.radioLabel}>
+              <label htmlFor="mode-api_only" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="mode-api_only"
                   name="mode"
                   value="api_only"
                   checked={mode === 'api_only'}
@@ -141,9 +149,10 @@ const Home = () => {
                 />
                 <span>API設計のみ</span>
               </label>
-              <label className={styles.radioLabel}>
+              <label htmlFor="mode-db_only" className={styles.radioLabel}>
                 <input
                   type="radio"
+                  id="mode-db_only"
                   name="mode"
                   value="db_only"
                   checked={mode === 'db_only'}
@@ -153,7 +162,7 @@ const Home = () => {
                 <span>DB設計のみ</span>
               </label>
             </div>
-          </div>
+          </fieldset>
 
           <button type="submit" className={styles.generateButton}>
             問題を生成する

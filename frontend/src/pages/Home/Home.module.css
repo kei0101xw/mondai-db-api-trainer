@@ -1,6 +1,7 @@
 .container {
   display: flex;
-  height: calc(100vh - 60px); /* ヘッダーの高さを引く */
+  height: calc(100vh - 60px);
+  /* ヘッダーの高さを引く */
   width: 100%;
 }
 
@@ -59,6 +60,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  border: none;
+  padding: 0;
+  margin: 0;
 }
 
 .label {

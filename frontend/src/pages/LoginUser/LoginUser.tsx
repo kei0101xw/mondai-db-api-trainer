@@ -50,6 +50,7 @@ const LoginUser = () => {
               className={styles.input}
               placeholder="example@email.com"
               disabled={isLoading}
+              autoComplete="email"
             />
           </div>
 
@@ -66,6 +67,7 @@ const LoginUser = () => {
               className={styles.input}
               placeholder="パスワードを入力"
               disabled={isLoading}
+              autoComplete="current-password"
             />
           </div>
 

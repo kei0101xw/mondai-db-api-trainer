@@ -231,10 +231,15 @@ const Solve = () => {
         {problemData.problems.map((problem, index) => {
           // ログインユーザーは problem_id、ゲストは配列インデックスをキーとして使用
           const answerKey = problem.problem_id ?? index;
+          const textareaId = `answer-${problem.problem_type}-${index}`;
           return (
             <div key={problem.problem_id || index} className={styles.answerSection}>
-              <h4>{problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答</h4>
+              <label htmlFor={textareaId} className={styles.answerLabel}>
+                {problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答
+              </label>
               <textarea
+                id={textareaId}
+                name={textareaId}
                 className={styles.answerTextarea}
                 placeholder={
                   problem.problem_type === 'db'

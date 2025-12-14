@@ -1,6 +1,7 @@
 .container {
   display: flex;
-  height: calc(100vh - 60px); /* ヘッダーの高さを引く */
+  height: calc(100vh - 60px);
+  /* ヘッダーの高さを引く */
   width: 100%;
 }
 
@@ -122,7 +123,9 @@
   margin-bottom: 2rem;
 }
 
-.answerSection h4 {
+.answerSection h4,
+.answerLabel {
+  display: block;
   font-size: 1.125rem;
   color: #374151;
   margin-bottom: 0.75rem;

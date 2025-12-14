@@ -59,6 +59,7 @@ const RegisterUser = () => {
               className={styles.input}
               placeholder="山田太郎"
               disabled={isLoading}
+              autoComplete="name"
             />
           </div>
 
@@ -75,6 +76,7 @@ const RegisterUser = () => {
               className={styles.input}
               placeholder="example@email.com"
               disabled={isLoading}
+              autoComplete="email"
             />
           </div>
 
@@ -92,6 +94,7 @@ const RegisterUser = () => {
               placeholder="8文字以上のパスワード"
               minLength={8}
               disabled={isLoading}
+              autoComplete="new-password"
             />
           </div>
 
@@ -109,6 +112,7 @@ const RegisterUser = () => {
               placeholder="パスワードを再入力"
               minLength={8}
               disabled={isLoading}
+              autoComplete="new-password"
             />
           </div>
 
