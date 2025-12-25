@@ -24,8 +24,12 @@ const Home = () => {
   return (
     <div className={styles.container}>
       <div className={styles.leftPanel}>
-        <h2>mondAI</h2>
-        <p>DB設計・API設計の練習問題を解いてスキルアップしましょう！</p>
+        <div className={styles.header}>
+          <h1>ホーム</h1>
+          <p className={styles.description}>
+            DB設計・API設計の練習問題を解いてスキルアップしましょう！
+          </p>
+        </div>
 
         {/* タブ切り替え */}
         <div className={styles.tabContainer}>
