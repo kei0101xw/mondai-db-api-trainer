@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts';
 import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
 import { FullScreenLoader } from '../../shared/ui/Loading';
 import styles from './Solve.module.css';
+import { completeGeneratePerf } from '../../shared/lib/perf';
 
 // バリデーション関数
 const parseDifficulty = (value: string | null): 'easy' | 'medium' | 'hard' => {
@@ -100,6 +101,13 @@ const Solve = () => {
 
     fetchProblem();
   }, [searchParams, isAuthenticated, user?.user_id, isAuthLoading, location.state]);
+
+  // 問題が表示可能になったタイミングで計測完了
+  useEffect(() => {
+    if (!loading && problemData) {
+      completeGeneratePerf(problemData.kind);
+    }
+  }, [loading, problemData]);
 
   // 回答が入力されている場合、ページ離脱時に確認ダイアログを表示
   useEffect(() => {

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/auth';
 import RankingCard from '../../components/RankingCard/RankingCard';
 import DashboardCard from '../../components/DashboardCard/DashboardCard';
 import styles from './Home.module.css';
+import { startGeneratePerf } from '../../shared/lib/perf';
 
 type LeftPanelTab = 'ranking' | 'mypage';
 
@@ -17,6 +18,13 @@ const Home = () => {
   const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTab>(user ? 'mypage' : 'ranking');
 
   const handleGenerate = () => {
+    startGeneratePerf({
+      difficulty,
+      app_scale: appScale,
+      mode,
+      user_type: user ? 'user' : 'guest',
+      user_id: user?.user_id ?? null,
+    });
     // パラメータをクエリパラメータとして渡してsolveページに遷移
     navigate(`/solve?difficulty=${difficulty}&app_scale=${appScale}&mode=${mode}`);
   };
