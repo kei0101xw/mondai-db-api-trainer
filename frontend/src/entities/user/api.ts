@@ -10,7 +10,10 @@ import type { User, UserResponse, RegisterRequest, LoginRequest } from './types'
  */
 export async function getCurrentUser(): Promise<User> {
   const response = await apiClient.get<UserResponse>('/auth/me');
-  return response.user;
+  return {
+    ...response.user,
+    current_problem_group_id: response.current_problem_group_id,
+  };
 }
 
 /**
@@ -18,7 +21,10 @@ export async function getCurrentUser(): Promise<User> {
  */
 export async function registerUser(data: RegisterRequest): Promise<User> {
   const response = await apiClient.post<UserResponse>('/auth/register', data);
-  return response.user;
+  return {
+    ...response.user,
+    current_problem_group_id: response.current_problem_group_id,
+  };
 }
 
 /**
@@ -26,7 +32,10 @@ export async function registerUser(data: RegisterRequest): Promise<User> {
  */
 export async function loginUser(data: LoginRequest): Promise<User> {
   const response = await apiClient.post<UserResponse>('/auth/login', data);
-  return response.user;
+  return {
+    ...response.user,
+    current_problem_group_id: response.current_problem_group_id,
+  };
 }
 
 /**
