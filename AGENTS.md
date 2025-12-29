@@ -563,21 +563,32 @@ AI による自動採点と解説表示を行う。
 
 ---
 
-### 7.3 問題生成（題材 + 小問）
+### 7.3 問題生成・在庫管理
 
 #### POST `/api/v1/problem-groups/generate`
 
-- 用途：題材（problem_group）と小問（problems）を AI で生成し、同時に各小問の模範解答（model_answers）も生成する
+- 用途：題材（problem_group）と小問（problems）を AI で生成し、同時に各小問の模範解答（model_answers）も生成・補充する
 - **アクセス制限**：バッチ専用 API。一般ユーザー（ログイン/ゲスト）は直接呼び出せない
 - **認証方式**：
   - リクエストヘッダーに `X-Batch-Secret: <BATCH_SECRET_KEY>` を含める
   - `BATCH_SECRET_KEY` は環境変数（`.env`）から読み込む
   - ヘッダーが一致しない場合は `403 Forbidden` を返す
+- **在庫管理機能**：
+  - 難易度ごとの在庫をチェック（全問題数 - 解答済み問題数）
+  - 在庫が 5 問未満の難易度に対して自動補充
+  - 1 時間おきに外部 cron サービス（cron-job.org 等）から呼び出し
 - 生成方式：1 回の Gemini API リクエストで問題と模範解答をまとめて生成し、構造化 JSON レスポンスを受け取る（コスト・レイテンシ・整合性の観点から最適）
-- バッチ：1 時間おきに難易度ごとの在庫（回答済みになっていない問題）をチェックし、5 問を下回る難易度はこの API を叩いて問題＋模範解答を補充する
-- 在庫ポリシー：難易度ごとに「まだ誰にも回答していない問題」を常時 5 問以上確保する。1 時間おきに DB をチェックし、在庫が 5 問以下の難易度は API を叩いて問題と模範解答を追加生成する
+- 在庫ポリシー：難易度ごとに「まだ誰にも回答していない問題」を常時 5 問以上確保する
 
-- Request
+- Request（形式 1: 複数難易度を一括処理・推奨）
+
+```json
+{
+  "difficulties": ["easy", "medium", "hard"]
+}
+```
+
+- Request（形式 2: 単一難易度のみ生成・従来形式）
 
 ```json
 {
@@ -585,47 +596,67 @@ AI による自動採点と解説表示を行う。
 }
 ```
 
+- Request（デフォルト・全難易度を自動処理）
+
+```json
+{}
+```
+
 - Response（200）
 
 ```json
 {
   "data": {
-    "kind": "persisted",
-    "problem_group": {
-      "problem_group_id": 123,
-      "title": "SNSアプリ",
-      "description": "...",
-      "difficulty": "easy",
-      "created_at": "2025-12-12T00:00:00Z"
-    },
-    "problems": [
+    "results": [
       {
-        "problem_id": 1,
-        "problem_group_id": 123,
-        "problem_type": "db",
-        "order_index": 1,
-        "problem_body": "..."
+        "difficulty": "easy",
+        "total_count": 10,
+        "attempted_count": 5,
+        "stock_count": 5,
+        "shortage": 0,
+        "generated_count": 0,
+        "problem_group": {
+          "problem_group_id": 123,
+          "title": "SNSアプリ",
+          "description": "...",
+          "difficulty": "easy",
+          "created_at": "2025-12-12T00:00:00Z"
+        },
+        "problems": [
+          {
+            "problem_id": 1,
+            "problem_group_id": 123,
+            "problem_type": "db",
+            "order_index": 1,
+            "problem_body": "..."
+          }
+        ],
+        "model_answers": [
+          {
+            "problem_id": 1,
+            "version": 1,
+            "model_answer": "CREATE TABLE users (...); ..."
+          }
+        ]
       },
       {
-        "problem_id": 2,
-        "problem_group_id": 123,
-        "problem_type": "api",
-        "order_index": 2,
-        "problem_body": "..."
+        "difficulty": "medium",
+        "total_count": 8,
+        "attempted_count": 3,
+        "stock_count": 5,
+        "shortage": 0,
+        "generated_count": 0
+      },
+      {
+        "difficulty": "hard",
+        "total_count": 6,
+        "attempted_count": 1,
+        "stock_count": 5,
+        "shortage": 0,
+        "generated_count": 0
       }
     ],
-    "model_answers": [
-      {
-        "problem_id": 1,
-        "version": 1,
-        "model_answer": "CREATE TABLE users (...); ..."
-      },
-      {
-        "problem_id": 2,
-        "version": 1,
-        "model_answer": "def create_post(...): ..."
-      }
-    ]
+    "total_generated": 0
   },
   "error": null
 }
@@ -633,7 +664,7 @@ AI による自動採点と解説表示を行う。
 
 ---
 
-### 7.4 問題取得（MVP）
+### 7.4 問題取得
 
 #### GET `/api/v1/problem-groups`（新規問題取得）
 
@@ -771,7 +802,7 @@ AI による自動採点と解説表示を行う。
 
 ---
 
-### 7.5 解答・採点・解説（〇 ×△）
+### 7.5 採点・解説（〇 ×△）
 
 > 生成と同様に、ログイン/ゲストを **同一エンドポイントで分岐**する。
 
