@@ -5,7 +5,9 @@ export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  guestProblemGroupId: number | null;
   setUser: (user: User | null) => void;
+  setGuestProblemGroupId: (id: number | null) => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }

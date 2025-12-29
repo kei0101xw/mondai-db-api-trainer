@@ -13,6 +13,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [guestProblemGroupId, setGuestProblemGroupId] = useState<number | null>(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       await apiLogoutUser();
       setUser(null);
+      setGuestProblemGroupId(null);
       // ログアウト時にSessionStorageの問題キャッシュをクリア
       clearProblemCache();
       // ログアウト後に新しいCSRFトークンを取得
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error) {
       console.error('Logout failed:', error);
       setUser(null);
+      setGuestProblemGroupId(null);
       // エラー時でもSessionStorageをクリア
       clearProblemCache();
       // エラー時でもCSRFトークンを再取得
@@ -70,7 +73,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     isLoading,
     isAuthenticated: user !== null,
+    guestProblemGroupId,
     setUser,
+    setGuestProblemGroupId,
     logout,
     refreshUser,
   };

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { GenerateProblemResponse, GradeResult } from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
 import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
 import styles from './Result.module.css';
+import { completeProblemGroup, getModelAnswers } from '../../entities/problem/api';
 
 type TabType = 'problem' | 'solution' | 'grading';
 
@@ -16,11 +17,51 @@ interface LocationState {
 const Result = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
-  const state = location.state as LocationState;
+  const { user, isAuthenticated, refreshUser, setGuestProblemGroupId } = useAuth();
+  const state = location.state as LocationState | null;
   const [activeTab, setActiveTab] = useState<TabType>('grading');
+  const [modelAnswers, setModelAnswers] = useState<Record<number, string>>({});
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [modelAnswersError, setModelAnswersError] = useState<string | null>(null);
+  const [isLoadingModelAnswers, setIsLoadingModelAnswers] = useState(true);
+  const problemData = state?.problemData;
+  const gradeResults = state?.gradeResults;
+  const answers = state?.answers ?? {};
 
-  if (!state || !state.problemData || !state.gradeResults) {
+  useEffect(() => {
+    if (!problemData) return;
+
+    const fetchModelAnswers = async () => {
+      try {
+        setIsLoadingModelAnswers(true);
+        const results = await Promise.all(
+          problemData.problems.map(async (problem) => {
+            const response = await getModelAnswers(problem.problem_id);
+            const latest = response.model_answers[response.model_answers.length - 1];
+            return [problem.problem_id, latest?.model_answer ?? ''] as const;
+          }),
+        );
+
+        const map: Record<number, string> = {};
+        results.forEach(([problemId, answer]) => {
+          if (answer) {
+            map[problemId] = answer;
+          }
+        });
+        setModelAnswers(map);
+        setModelAnswersError(null);
+      } catch (err) {
+        console.error(err);
+        setModelAnswersError('模範解答の取得に失敗しました');
+      } finally {
+        setIsLoadingModelAnswers(false);
+      }
+    };
+
+    fetchModelAnswers();
+  }, [problemData]);
+
+  if (!problemData || !gradeResults) {
     return (
       <div className={styles.errorContainer}>
         <p>採点結果が見つかりません</p>
@@ -28,18 +69,29 @@ const Result = () => {
     );
   }
 
-  const { problemData, gradeResults, answers } = state;
+  const handleComplete = async () => {
+    try {
+      setIsCompleting(true);
+      await completeProblemGroup(problemData.problem_group.problem_group_id, {
+        guest_token: problemData.kind === 'guest' ? problemData.guest_token : undefined,
+      });
 
-  const getGradeEmoji = (grade: number) => {
-    switch (grade) {
-      case 2:
-        return '◯';
-      case 1:
-        return '△';
-      case 0:
-        return '×';
-      default:
-        return '?';
+      const userPrefix = isAuthenticated ? `user_${user?.user_id}` : 'guest';
+      sessionStorage.removeItem(`mondai_problem_current_${userPrefix}`);
+
+      // ゲストユーザーの場合、guestProblemGroupIdをクリア
+      if (!isAuthenticated) {
+        setGuestProblemGroupId(null);
+      } else {
+        // ログインユーザーの場合、バックエンドのセッション情報を更新するため refreshUser を呼び出す
+        await refreshUser();
+      }
+
+      navigate('/');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '問題の完了に失敗しました');
+    } finally {
+      setIsCompleting(false);
     }
   };
 
@@ -52,8 +104,6 @@ const Result = () => {
               <h2>{problemData.problem_group.title}</h2>
               <div className={styles.badges}>
                 <span className={styles.badge}>{problemData.problem_group.difficulty}</span>
-                <span className={styles.badge}>{problemData.problem_group.app_scale}</span>
-                <span className={styles.badge}>{problemData.problem_group.mode}</span>
               </div>
             </div>
             <div className={styles.problemDescription}>
@@ -84,18 +134,24 @@ const Result = () => {
                   <span className={styles.problemTypeLabel}>
                     {result.problem_type === 'db' ? 'DB設計' : 'API設計'}
                   </span>
-                  <span className={styles.gradeLabel}>{getGradeEmoji(result.grade)}</span>
+                  <span className={styles.gradeLabel}>{result.grade_display}</span>
                 </div>
                 <div className={styles.solutionBody}>
                   <CodeEditor
-                    value={result.solution.solution_body}
+                    value={
+                      isLoadingModelAnswers
+                        ? '模範解答を取得中です...'
+                        : modelAnswers[result.problem_ref.problem_id] ||
+                          modelAnswersError ||
+                          '模範解答が見つかりません'
+                    }
                     language={result.problem_type === 'db' ? 'sql' : 'plain'}
                     readOnly
                   />
                 </div>
                 <div className={styles.explanation}>
                   <h4>解説</h4>
-                  <p>{result.solution.explanation}</p>
+                  <p>{result.explanation.explanation_body}</p>
                 </div>
               </div>
             ))}
@@ -122,11 +178,11 @@ const Result = () => {
                         {result.problem_type === 'db' ? 'DB設計' : 'API設計'}
                       </span>
                       <span className={`${styles.gradeDisplay} ${gradeClass}`}>
-                        {getGradeEmoji(result.grade)}
+                        {result.grade_display}
                       </span>
                     </div>
                     <div className={styles.gradingExplanation}>
-                      <p>{result.solution.explanation}</p>
+                      <p>{result.explanation.explanation_body}</p>
                     </div>
                   </div>
                 );
@@ -168,8 +224,8 @@ const Result = () => {
       <div className={styles.divider}></div>
       <div className={styles.rightPanel}>
         <h3>あなたの回答</h3>
-        {problemData.problems.map((problem, index) => {
-          const answerKey = problem.problem_id || index;
+        {problemData.problems.map((problem) => {
+          const answerKey = problem.problem_id;
           return (
             <div key={answerKey} className={styles.answerSection}>
               <h4>{problem.problem_type === 'db' ? 'DB設計' : 'API設計'} 回答</h4>
@@ -182,18 +238,8 @@ const Result = () => {
           );
         })}
         <div className={styles.buttonContainer}>
-          <button
-            onClick={() => {
-              // SessionStorageから問題データをクリア（Solveと同じキー構造で削除）
-              const { difficulty, app_scale, mode } = problemData.problem_group;
-              const userPrefix = isAuthenticated ? `user_${user?.user_id}` : 'guest';
-              const storageKey = `mondai_problem_${userPrefix}_${difficulty}_${app_scale}_${mode}`;
-              sessionStorage.removeItem(storageKey);
-              navigate('/');
-            }}
-            className={styles.finishButton}
-          >
-            終了してホームに戻る
+          <button onClick={handleComplete} className={styles.finishButton} disabled={isCompleting}>
+            {isCompleting ? '処理中...' : '終了してホームに戻る'}
           </button>
         </div>
       </div>

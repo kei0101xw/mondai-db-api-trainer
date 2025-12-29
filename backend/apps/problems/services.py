@@ -1,5 +1,4 @@
 import json
-import secrets
 import unicodedata
 from typing import Any, TypedDict, Optional, List, Tuple, Dict
 from django.contrib.auth import get_user_model
@@ -14,6 +13,16 @@ from .prompts import (
 )
 
 User = get_user_model()
+
+
+def _fix_unescaped_newlines(json_str: str) -> str:
+    # シンプル化：前処理は行わずそのまま返す
+    return json_str
+
+
+def _attempt_fix_incomplete_json(json_str: str) -> str:
+    # シンプル化：修復は行わずそのまま返す
+    return json_str
 
 
 class ProblemData(TypedDict):
@@ -76,29 +85,23 @@ class ProblemGenerator:
     def generate(
         self,
         difficulty: str,
-        app_scale: str,
-        mode: str,
-        user: Optional[User] = None,
     ) -> Tuple[Optional[ProblemGroup], Optional[List[Problem]], Dict[str, Any]]:
         """
-        問題を生成する
+        問題を生成する（バッチ専用API）
 
         Args:
             difficulty: 難易度 (easy/medium/hard)
-            app_scale: アプリ規模 (small/medium/large)
-            mode: モード (db_only/api_only/both)
-            user: ログインユーザー（Noneの場合はゲスト）
 
         Returns:
-            (ProblemGroupインスタンス or None, Problemリスト or None, レスポンスデータ)
-            - ログインユーザーの場合：DB保存してインスタンスを返す
-            - ゲストの場合：DBに保存せず、辞書データのみ返す
+            (ProblemGroupインスタンス, Problemリスト, レスポンスデータ)
+            - DB保存してインスタンスを返す
+            - model_answers も同時に生成・保存する
 
         Raises:
             ProblemGeneratorError: 問題生成に失敗した場合
         """
         # プロンプト構築
-        prompt = build_problem_generation_prompt(difficulty, app_scale, mode)
+        prompt = build_problem_generation_prompt(difficulty)
 
         # Gemini APIで生成
         try:
@@ -118,55 +121,45 @@ class ProblemGenerator:
             generated_data: GeneratedProblemGroup = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise ProblemGeneratorError(f"JSONパースエラー: {e}") from e
+        except ValueError as e:
+            # JSON抽出エラー
+            debug_snippet = (
+                response_text[:500] if len(response_text) > 500 else response_text
+            )
+            raise ProblemGeneratorError(
+                f"JSON抽出エラー: {e}\nレスポンス先頭: {debug_snippet}"
+            ) from e
 
         # バリデーション
-        self._validate_generated_data(generated_data, mode)
+        self._validate_generated_data(generated_data)
 
-        # ログインユーザーの場合：DB保存
-        if user and user.is_authenticated:
-            return self._save_to_db(
-                generated_data=generated_data,
-                difficulty=difficulty,
-                app_scale=app_scale,
-                mode=mode,
-                user=user,
-            )
-
-        # ゲストの場合：一時データとして返す
-        return self._create_guest_response(
+        # DB保存（バッチ専用のため常に保存）
+        return self._save_to_db(
             generated_data=generated_data,
             difficulty=difficulty,
-            app_scale=app_scale,
-            mode=mode,
         )
 
     @staticmethod
     def _extract_json_from_response(response_text: str) -> str:
         """
-        Geminiレスポンスから JSON部分を抽出する
-
-        Args:
-            response_text: Gemini APIからのレスポンステキスト
-
-        Returns:
-            JSON文字列
+        GeminiレスポンスはJSONのみを想定しているため、最小限の整形で返す。
+        - 先頭末尾にコードフェンスが両方付いていれば剥がす（簡易対応）
+        - それ以外はそのまま返す
         """
-        # バッククォートで囲まれている場合を処理
-        if response_text.strip().startswith("```"):
-            # ```json から ``` までを抽出
-            start = response_text.find("{")
-            end = response_text.rfind("}") + 1
-            if start != -1 and end > start:
-                return response_text[start:end]
-        return response_text.strip()
+        text = response_text.strip()
+        if text.startswith("```") and text.rstrip().endswith("```"):
+            first_newline = text.find("\n")
+            if first_newline != -1:
+                text = text[first_newline + 1 :]
+            text = text.rsplit("```", 1)[0].strip()
+        return text
 
-    def _validate_generated_data(self, data: GeneratedProblemGroup, mode: str) -> None:
+    def _validate_generated_data(self, data: GeneratedProblemGroup) -> None:
         """
         生成されたデータをバリデーションする
 
         Args:
             data: 生成されたデータ
-            mode: モード
 
         Raises:
             ProblemGeneratorError: バリデーションエラー
@@ -178,24 +171,15 @@ class ProblemGenerator:
             raise ProblemGeneratorError("description が含まれていません")
         if "problems" not in data or not isinstance(data["problems"], list):
             raise ProblemGeneratorError("problems が配列ではありません")
+        if "model_answers" not in data or not isinstance(data["model_answers"], list):
+            raise ProblemGeneratorError("model_answers が配列ではありません")
 
-        # モードに応じた問題数チェック
+        # 問題数チェック（mode=both固定: DB1問 + API1問以上）
         problem_count = len(data["problems"])
-        if mode == "db_only":
-            if problem_count != 1:
-                raise ProblemGeneratorError(
-                    f"問題数が不正です（期待: 1, 実際: {problem_count}）"
-                )
-        elif mode == "api_only":
-            if problem_count < 1:
-                raise ProblemGeneratorError(
-                    f"問題数が不正です（期待: 1問以上, 実際: {problem_count}）"
-                )
-        elif mode == "both":
-            if problem_count < 2:
-                raise ProblemGeneratorError(
-                    f"問題数が不正です（期待: 2問以上, 実際: {problem_count}）"
-                )
+        if problem_count < 2:
+            raise ProblemGeneratorError(
+                f"問題数が不正です（期待: 2問以上, 実際: {problem_count}）"
+            )
 
         # 各問題のバリデーション
         for idx, problem in enumerate(data["problems"], start=1):
@@ -218,45 +202,44 @@ class ProblemGenerator:
                     f"問題{idx}: problem_type が不正です（{problem['problem_type']}）"
                 )
 
-        # モードと problem_type の整合性チェック
+        # mode=both ルール: DB問題1問 + API問題1問以上
         problem_types = [p["problem_type"] for p in data["problems"]]
+        if problem_types[0] != "db":
+            raise ProblemGeneratorError(
+                f"mode=both では最初の問題は DB 設計である必要があります（実際: {problem_types[0]}）"
+            )
 
-        if mode == "db_only":
-            if not all(pt == "db" for pt in problem_types):
-                raise ProblemGeneratorError(
-                    f"mode=db_only ではすべて DB 設計問題である必要があります（実際: {problem_types}）"
-                )
-        elif mode == "api_only":
-            if not all(pt == "api" for pt in problem_types):
-                raise ProblemGeneratorError(
-                    f"mode=api_only ではすべて API 設計問題である必要があります（実際: {problem_types}）"
-                )
-        elif mode == "both":
-            # DB設計1問 + API設計1問以上を期待（順序: DB → API）
-            if problem_types[0] != "db":
-                raise ProblemGeneratorError(
-                    f"mode=both では最初の問題は DB 設計である必要があります（実際: {problem_types[0]}）"
-                )
+        db_count = problem_types.count("db")
+        api_count = problem_types.count("api")
 
-            # DB問題の数をカウント
-            db_count = problem_types.count("db")
-            api_count = problem_types.count("api")
+        if db_count != 1:
+            raise ProblemGeneratorError(
+                f"mode=both では DB 設計問題は1問である必要があります（実際: {db_count}問）"
+            )
 
-            if db_count != 1:
+        if api_count < 1:
+            raise ProblemGeneratorError(
+                f"mode=both では API 設計問題は1問以上必要です（実際: {api_count}問）"
+            )
+
+        # model_answers のバリデーション
+        for idx, model_answer in enumerate(data["model_answers"], start=1):
+            if "order_index" not in model_answer:
                 raise ProblemGeneratorError(
-                    f"mode=both では DB 設計問題は1問である必要があります（実際: {db_count}問）"
+                    f"模範解答{idx}: order_index が含まれていません"
                 )
-
-            if api_count < 1:
+            if "version" not in model_answer:
                 raise ProblemGeneratorError(
-                    f"mode=both では API 設計問題は1問以上必要です（実際: {api_count}問）"
+                    f"模範解答{idx}: version が含まれていません"
                 )
-
-            # すべてのAPI問題がDB問題より後に配置されているか確認
-            first_api_index = problem_types.index("api")
-            if first_api_index == 0:
+            if "model_answer" not in model_answer or not model_answer["model_answer"]:
                 raise ProblemGeneratorError(
-                    "mode=both では DB 設計問題を最初に配置する必要があります"
+                    f"模範解答{idx}: model_answer が含まれていません"
+                )
+            # versionは1であることを確認
+            if model_answer["version"] != 1:
+                raise ProblemGeneratorError(
+                    f"模範解答{idx}: version は 1 である必要があります（実際: {model_answer['version']}）"
                 )
 
     @transaction.atomic
@@ -264,35 +247,29 @@ class ProblemGenerator:
         self,
         generated_data: GeneratedProblemGroup,
         difficulty: str,
-        app_scale: str,
-        mode: str,
-        user: User,
     ) -> Tuple[ProblemGroup, List[Problem], Dict[str, Any]]:
         """
-        生成されたデータをDBに保存する（ログインユーザー用）
+        生成されたデータをDBに保存する（バッチ専用）
 
         Args:
             generated_data: 生成されたデータ
             difficulty: 難易度
-            app_scale: アプリ規模
-            mode: モード
-            user: ログインユーザー
 
         Returns:
             (ProblemGroupインスタンス, Problemリスト, レスポンスデータ)
         """
+        from .models import ModelAnswer
+
         # ProblemGroup作成
         problem_group = ProblemGroup.objects.create(
             title=generated_data["title"],
             description=generated_data["description"],
             difficulty=difficulty,
-            app_scale=app_scale,
-            mode=mode,
-            created_by_user=user,
         )
 
         # Problem作成
         problems = []
+        problem_id_by_order = {}  # order_index -> problem_id マップ
         for problem_data in generated_data["problems"]:
             problem = Problem.objects.create(
                 problem_group=problem_group,
@@ -301,6 +278,21 @@ class ProblemGenerator:
                 problem_body=problem_data["problem_body"],
             )
             problems.append(problem)
+            problem_id_by_order[problem.order_index] = problem.problem_id
+
+        # ModelAnswer作成
+        model_answers = []
+        for ma_data in generated_data["model_answers"]:
+            problem = next(
+                (p for p in problems if p.order_index == ma_data["order_index"]), None
+            )
+            if problem:
+                model_answer = ModelAnswer.objects.create(
+                    problem=problem,
+                    version=ma_data["version"],
+                    model_answer=ma_data["model_answer"],
+                )
+                model_answers.append(model_answer)
 
         # レスポンスデータ構築
         response_data = {
@@ -310,8 +302,6 @@ class ProblemGenerator:
                 "title": problem_group.title,
                 "description": problem_group.description,
                 "difficulty": problem_group.difficulty,
-                "app_scale": problem_group.app_scale,
-                "mode": problem_group.mode,
                 "created_at": problem_group.created_at.isoformat(),
             },
             "problems": [
@@ -324,53 +314,17 @@ class ProblemGenerator:
                 }
                 for p in problems
             ],
-        }
-
-        return problem_group, problems, response_data
-
-    def _create_guest_response(
-        self,
-        generated_data: GeneratedProblemGroup,
-        difficulty: str,
-        app_scale: str,
-        mode: str,
-    ) -> Tuple[None, None, Dict[str, Any]]:
-        """
-        ゲスト用のレスポンスデータを作成する
-
-        Args:
-            generated_data: 生成されたデータ
-            difficulty: 難易度
-            app_scale: アプリ規模
-            mode: モード
-
-        Returns:
-            (None, None, レスポンスデータ)
-        """
-        # ゲストトークン生成（32文字のランダム文字列）
-        guest_token = secrets.token_urlsafe(32)
-
-        response_data = {
-            "kind": "guest",
-            "guest_token": guest_token,
-            "problem_group": {
-                "title": generated_data["title"],
-                "description": generated_data["description"],
-                "difficulty": difficulty,
-                "app_scale": app_scale,
-                "mode": mode,
-            },
-            "problems": [
+            "model_answers": [
                 {
-                    "order_index": p["order_index"],
-                    "problem_type": p["problem_type"],
-                    "problem_body": p["problem_body"],
+                    "problem_id": ma.problem.problem_id,
+                    "version": ma.version,
+                    "model_answer": ma.model_answer,
                 }
-                for p in generated_data["problems"]
+                for ma in model_answers
             ],
         }
 
-        return None, None, response_data
+        return problem_group, problems, response_data
 
 
 class AnswerGrader:
@@ -419,13 +373,20 @@ class AnswerGrader:
             )
         except GeminiClientError as e:
             raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
-
-        # JSONパース（前処理付き）
+        # JSONパース（最小前処理）
         try:
             json_str = self._extract_json_from_response(response_text)
             grading_result: GradingResult = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise AnswerGraderError(f"JSONパースエラー: {e}") from e
+        except ValueError as e:
+            # JSON抽出エラー
+            debug_snippet = (
+                response_text[:500] if len(response_text) > 500 else response_text
+            )
+            raise AnswerGraderError(
+                f"JSON抽出エラー: {e}\nレスポンス先頭: {debug_snippet}"
+            ) from e
 
         # 結果が辞書型かチェック
         if not isinstance(grading_result, dict):
@@ -464,22 +425,17 @@ class AnswerGrader:
     @staticmethod
     def _extract_json_from_response(response_text: str) -> str:
         """
-        Geminiレスポンスから JSON部分を抽出する
-
-        Args:
-            response_text: Gemini APIからのレスポンステキスト
-
-        Returns:
-            JSON文字列
+        GeminiレスポンスはJSONのみを想定しているため、最小限の整形で返す。
+        - 先頭末尾にコードフェンスが両方付いていれば剥がす（簡易対応）
+        - それ以外はそのまま返す
         """
-        # バッククォートで囲まれている場合を処理
-        if response_text.strip().startswith("```"):
-            # ```json から ``` までを抽出
-            start = response_text.find("{")
-            end = response_text.rfind("}") + 1
-            if start != -1 and end > start:
-                return response_text[start:end]
-        return response_text.strip()
+        text = response_text.strip()
+        if text.startswith("```") and text.rstrip().endswith("```"):
+            first_newline = text.find("\n")
+            if first_newline != -1:
+                text = text[first_newline + 1 :]
+            text = text.rsplit("```", 1)[0].strip()
+        return text
 
     def _validate_grading_result(self, result: GradingResult) -> None:
         """
@@ -557,12 +513,20 @@ class AnswerGrader:
         except GeminiClientError as e:
             raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
 
-        # JSONパース（前処理付き）
+        # JSONパース（最小前処理）
         try:
             json_str = self._extract_json_from_response(response_text)
             parsed_response = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise AnswerGraderError(f"JSONパースエラー: {e}") from e
+        except ValueError as e:
+            # JSON抽出エラー
+            debug_snippet = (
+                response_text[:500] if len(response_text) > 500 else response_text
+            )
+            raise AnswerGraderError(
+                f"JSON抽出エラー: {e}\nレスポンス先頭: {debug_snippet}"
+            ) from e
 
         # 結果が辞書型かチェック
         if not isinstance(parsed_response, dict):

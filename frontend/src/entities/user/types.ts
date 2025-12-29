@@ -7,8 +7,9 @@ export interface User {
   email: string;
   name: string;
   icon_url?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
+  current_problem_group_id?: number | null;
 }
 
 export interface RegisterRequest {
@@ -23,5 +24,6 @@ export interface LoginRequest {
 }
 
 export interface UserResponse {
-  user: User;
+  user: Omit<User, 'current_problem_group_id'>;
+  current_problem_group_id?: number | null;
 }

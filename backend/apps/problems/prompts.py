@@ -1,14 +1,12 @@
-def build_problem_generation_prompt(difficulty: str, app_scale: str, mode: str) -> str:
+def build_problem_generation_prompt(difficulty: str) -> str:
     """
-    問題生成用のプロンプトを構築する
+    問題生成用のプロンプトを構築する（難易度のみ指定、mode=both固定）
 
     Args:
         difficulty: 難易度 (easy/medium/hard)
-        app_scale: アプリ規模 (small/medium/large)
-        mode: モード (db_only/api_only/both)
 
     Returns:
-        Gemini API に投げるプロンプト文字列
+        Gemini API に投げるプロンプト文字列（問題 + 模範解答を含む）
     """
 
     # 難易度の説明
@@ -18,47 +16,16 @@ def build_problem_generation_prompt(difficulty: str, app_scale: str, mode: str) 
         "hard": "上級者向け。パフォーマンス最適化、セキュリティ、スケーラビリティを考慮。",
     }
 
-    # アプリ規模の説明
-    scale_desc = {
-        "small": "小規模（5テーブル以下、5エンドポイント以下）",
-        "medium": "中規模（5〜10テーブル、10〜15エンドポイント）",
-        "large": "大規模（10テーブル以上、15エンドポイント以上）",
-    }
+    prompt = f"""あなたはバックエンドエンジニア向けの問題作成専門家です。
+以下の条件に基づいて、データベース設計・API設計の練習問題を生成してください。
 
-    # モードに応じた問題タイプ
-    mode_instruction = {
-        "db_only": """
-# 問題タイプ
-- DB設計問題のみを生成してください
+# 条件
+- 難易度: {difficulty} ({difficulty_desc.get(difficulty, "")})
+- 出力タイプ: DB設計1問 + API設計1問以上（mode=both固定）
+- 模範解答: 各小問に対して version=1 の模範解答を必ず含めてください
 
-# 期待する出力
-"problems" 配列には1つの要素（problem_type: "db"）のみを含めてください。
-""",
-        "api_only": """
-# 問題タイプ
-- API設計問題のみを生成してください
-
-# 期待する出力
-"problems" 配列には API設計問題（problem_type: "api"）を1問以上含めてください。
-
-## API問題の分割方針
-API設計問題は、アプリの機能ごとに別々の小問として生成してください。
-
-例：SNSアプリの場合
-- order_index: 1 → ユーザー管理API（ユーザー登録、ログイン、プロフィール取得等）
-- order_index: 2 → 投稿管理API（投稿作成、投稿一覧取得、投稿削除等）
-- order_index: 3 → いいね機能API（いいね追加、いいね取得等）
-- order_index: 4 → フォロー機能API（フォロー、フォロワー一覧等）
-
-各API問題（小問）では、その機能に関連するエンドポイント群をまとめて設計させてください。
-アプリ規模に応じて適切な数の小問を生成してください（small: 2-3問、medium: 3-5問、large: 5-7問程度）。
-""",
-        "both": """
-# 問題タイプ
-- DB設計問題とAPI設計問題の両方を生成してください
-
-# 期待する出力
-"problems" 配列には以下の要素を含めてください：
+# 問題タイプと構成
+必ず以下の構成で問題を生成してください：
 1. DB設計問題（problem_type: "db", order_index: 1）を1問
 2. API設計問題（problem_type: "api", order_index: 2以降）を機能ごとに小問として複数生成
 
@@ -66,27 +33,19 @@ API設計問題は、アプリの機能ごとに別々の小問として生成�
 API設計問題は、アプリの機能ごとに別々の小問として生成してください。
 
 例：SNSアプリの場合
+- order_index: 1 → DB設計（全体のテーブル設計）
 - order_index: 2 → ユーザー管理API（ユーザー登録、ログイン、プロフィール取得等）
 - order_index: 3 → 投稿管理API（投稿作成、投稿一覧取得、投稿削除等）
 - order_index: 4 → いいね機能API（いいね追加、いいね取得等）
 - order_index: 5 → フォロー機能API（フォロー、フォロワー一覧等）
 
 各API問題（小問）では、その機能に関連するエンドポイント群をまとめて設計させてください。
-アプリ規模に応じて適切な数の小問を生成してください（small: 2-3問、medium: 3-5問、large: 5-7問程度）。
+難易度に応じて適切な数の小問を生成してください：
+- easy: DB 1問 + API 1〜2問（計2〜3問）
+- medium: DB 1問 + API 2〜4問（計3〜5問）
+- hard: DB 1問 + API 4〜6問（計5〜7問）
 
-※ 必ずDB問題を先頭に配置してください。
-""",
-    }
-
-    prompt = f"""あなたはバックエンドエンジニア向けの問題作成専門家です。
-以下の条件に基づいて、データベース設計・API設計の練習問題を生成してください。
-
-# 条件
-- 難易度: {difficulty} ({difficulty_desc.get(difficulty, "")})
-- アプリ規模: {app_scale} ({scale_desc.get(app_scale, "")})
-- モード: {mode}
-
-{mode_instruction.get(mode, "")}
+※ 必ずDB問題を先頭（order_index: 1）に配置してください。
 
 # アプリの題材例
 - SNSアプリ（投稿、いいね、フォロー機能）
@@ -100,7 +59,7 @@ API設計問題は、アプリの機能ごとに別々の小問として生成�
 # 出力形式（JSON）
 必ず以下のJSON形式で出力してください。JSONのみを出力し、それ以外の説明文は含めないでください。
 
-mode=both の場合は、API問題を機能ごとに分けて生成してください。
+API問題は機能ごとに分けて生成してください。
 
 ```json
 {{
@@ -121,8 +80,23 @@ mode=both の場合は、API問題を機能ごとに分けて生成してくだ�
       "problem_type": "api",
       "order_index": 3,
       "problem_body": "【投稿管理機能】のAPIを設計してください。\\n\\n以下の要件を満たすAPIを設計し、擬似コードで実装方針を示してください。\\n\\n■要件\\n- 投稿の作成・取得・更新・削除\\n- タイムライン形式での投稿一覧取得（フォロー中ユーザーの投稿のみ）\\n- ページング対応（カーソルベース推奨）\\n- 投稿者本人のみ編集・削除可能\\n\\n■回答フォーマット\\n1. API設計情報\\n2. 疑似コード"
-    }}
-  ]
+    }}  ],
+  "model_answers": [
+    {{
+      "order_index": 1,
+      "version": 1,
+      "model_answer": "CREATE TABLE users (...); CREATE TABLE posts (...); ..."
+    }},
+    {{
+      "order_index": 2,
+      "version": 1,
+      "model_answer": "def create_post(...): ..."
+    }},
+    {{
+      "order_index": 3,
+      "version": 1,
+      "model_answer": "def create_timeline_post(...): ..."
+    }}  ]
 }}
 ```
 
@@ -135,7 +109,9 @@ mode=both の場合は、API問題を機能ごとに分けて生成してくだ�
 - API設計問題の回答では、以下の2点を必ず含める形式としてください。
   1. API設計情報（HTTPメソッド、エンドポイント、役割、認証、入出力）
   2. 上記設計に基づく疑似コード（言語非依存で可）
-- 難易度とアプリ規模に応じて、問題の複雑さとAPI小問の数を調整してください
+- model_answers配列には、各小問（order_index）に対する模範解答を必ず含めてください
+- 全ての模範解答のversionは1に設定してください（初回生成のため）
+- 難易度に応じて、問題の複雑さとAPI小問の数を調整してください
 - 必ずJSONのみを出力してください（```json マーカーも不要です）
 """
 

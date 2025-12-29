@@ -6,21 +6,12 @@ import { useAuth } from '../../contexts';
 import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
 import { FullScreenLoader } from '../../shared/ui/Loading';
 import styles from './Solve.module.css';
+import { completeGeneratePerf } from '../../shared/lib/perf';
 
 // バリデーション関数
 const parseDifficulty = (value: string | null): 'easy' | 'medium' | 'hard' => {
   if (value === 'easy' || value === 'medium' || value === 'hard') return value;
   return 'easy';
-};
-
-const parseAppScale = (value: string | null): 'small' | 'medium' | 'large' => {
-  if (value === 'small' || value === 'medium' || value === 'large') return value;
-  return 'small';
-};
-
-const parseMode = (value: string | null): 'both' | 'api_only' | 'db_only' => {
-  if (value === 'both' || value === 'api_only' || value === 'db_only') return value;
-  return 'both';
 };
 
 // 再挑戦用のstate型
@@ -33,22 +24,39 @@ const Solve = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    isLoading: isAuthLoading,
+    refreshUser,
+    setGuestProblemGroupId,
+  } = useAuth();
   const [problemData, setProblemData] = useState<GenerateProblemResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<{ [key: number]: string }>({});
   const [submitting, setSubmitting] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false); // 二重実行を防ぐフラグ
 
   useEffect(() => {
     // 認証状態が確定するまで待つ
     if (isAuthLoading) return;
+
+    // 既に取得済みの場合はスキップ（Strict Modeの二重実行を防ぐ）
+    if (hasFetched) return;
 
     // 再挑戦モードのチェック（location.stateから問題データを取得）
     const state = location.state as RetryLocationState | null;
     if (state?.problemData && state?.retryProblemGroupId) {
       setProblemData(state.problemData);
       setLoading(false);
+      setHasFetched(true);
+      // ログインユーザーの場合、バックエンドのセッション情報を更新するため refreshUser を呼び出す
+      if (isAuthenticated) {
+        refreshUser().catch(() => {
+          // エラーは無視
+        });
+      }
       // stateをクリア（ブラウザバックで再利用されないように）
       window.history.replaceState({}, document.title);
       return;
@@ -58,12 +66,10 @@ const Solve = () => {
       try {
         setLoading(true);
         const difficulty = parseDifficulty(searchParams.get('difficulty'));
-        const appScale = parseAppScale(searchParams.get('app_scale'));
-        const mode = parseMode(searchParams.get('mode'));
 
         // SessionStorageのキーを生成（ログイン状態を含める）
         const userPrefix = isAuthenticated ? `user_${user?.user_id}` : 'guest';
-        const storageKey = `mondai_problem_${userPrefix}_${difficulty}_${appScale}_${mode}`;
+        const storageKey = `mondai_problem_current_${userPrefix}`;
 
         // SessionStorageから既存の問題データを取得
         const cachedData = sessionStorage.getItem(storageKey);
@@ -72,6 +78,7 @@ const Solve = () => {
             const parsed = JSON.parse(cachedData);
             setProblemData(parsed);
             setLoading(false);
+            setHasFetched(true);
             return;
           } catch (parseError) {
             // パースエラーの場合は無視して新規生成
@@ -81,25 +88,47 @@ const Solve = () => {
         }
 
         // SessionStorageにデータがない場合のみAPI呼び出し
-        const response = await generateProblem({
-          difficulty,
-          app_scale: appScale,
-          mode,
-        });
+        const response = await generateProblem({ difficulty });
 
         setProblemData(response);
+        setHasFetched(true);
 
         // 生成した問題をSessionStorageに保存
         sessionStorage.setItem(storageKey, JSON.stringify(response));
+
+        // ゲストユーザーの場合、guestProblemGroupIdを設定
+        if (!isAuthenticated) {
+          setGuestProblemGroupId(response.problem_group.problem_group_id);
+        } else {
+          // ログインユーザーの場合、バックエンドのセッション情報を更新するため refreshUser を呼び出す
+          await refreshUser();
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : '問題の生成に失敗しました');
+        setHasFetched(true); // エラーの場合もフラグを立てる
       } finally {
         setLoading(false);
       }
     };
 
     fetchProblem();
-  }, [searchParams, isAuthenticated, user?.user_id, isAuthLoading, location.state]);
+  }, [
+    searchParams,
+    isAuthenticated,
+    user?.user_id,
+    isAuthLoading,
+    location.state,
+    hasFetched,
+    refreshUser,
+    setGuestProblemGroupId,
+  ]);
+
+  // 問題が表示可能になったタイミングで計測完了
+  useEffect(() => {
+    if (!loading && problemData) {
+      completeGeneratePerf(problemData.kind);
+    }
+  }, [loading, problemData]);
 
   // 回答が入力されている場合、ページ離脱時に確認ダイアログを表示
   useEffect(() => {
@@ -133,9 +162,8 @@ const Solve = () => {
     if (!problemData) return;
 
     // 回答が入力されているかチェック
-    // ゲストの場合は problem_id が undefined なので、order_index をフォールバックとして使用
-    const hasAnswers = problemData.problems.every((problem, index) => {
-      const key = problem.problem_id ?? index;
+    const hasAnswers = problemData.problems.every((problem) => {
+      const key = problem.problem_id;
       return answers[key]?.trim();
     });
 
@@ -157,20 +185,18 @@ const Solve = () => {
       const gradeRequest =
         problemData.kind === 'persisted'
           ? {
-              problem_group_id: problemData.problem_group.problem_group_id!,
+              problem_group_id: problemData.problem_group.problem_group_id,
               answers: problemData.problems.map((problem) => ({
-                problem_id: problem.problem_id!,
-                answer_body: answers[problem.problem_id!],
+                problem_id: problem.problem_id,
+                answer_body: answers[problem.problem_id],
               })),
             }
           : {
               guest_token: problemData.guest_token!,
-              answers: problemData.problems.map((problem, index) => {
-                // ゲストの場合は配列インデックスをキーとして使用
-                const answerKey = index;
+              answers: problemData.problems.map((problem) => {
                 return {
-                  order_index: problem.order_index,
-                  answer_body: answers[answerKey],
+                  problem_id: problem.problem_id,
+                  answer_body: answers[problem.problem_id],
                 };
               }),
             };
@@ -234,8 +260,6 @@ const Solve = () => {
             <h2>{problemData.problem_group.title}</h2>
             <div className={styles.badges}>
               <span className={styles.badge}>{problemData.problem_group.difficulty}</span>
-              <span className={styles.badge}>{problemData.problem_group.app_scale}</span>
-              <span className={styles.badge}>{problemData.problem_group.mode}</span>
             </div>
           </div>
           <div className={styles.problemDescription}>
@@ -243,7 +267,7 @@ const Solve = () => {
           </div>
           <div className={styles.problemsList}>
             {problemData.problems.map((problem, index) => (
-              <div key={problem.problem_id || index} className={styles.problemItem}>
+              <div key={problem.problem_id} className={styles.problemItem}>
                 <div className={styles.problemTypeLabel}>{formatQuestionLabel(problem, index)}</div>
                 <div className={styles.problemBody}>
                   <pre>{problem.problem_body}</pre>
@@ -256,10 +280,9 @@ const Solve = () => {
         <div className={styles.rightPanel}>
           <h3>回答エリア</h3>
           {problemData.problems.map((problem, index) => {
-            // ログインユーザーは problem_id、ゲストは配列インデックスをキーとして使用
-            const answerKey = problem.problem_id ?? index;
+            const answerKey = problem.problem_id;
             return (
-              <div key={problem.problem_id || index} className={styles.answerSection}>
+              <div key={problem.problem_id} className={styles.answerSection}>
                 <label className={styles.answerLabel}>{formatQuestionLabel(problem, index)}</label>
                 <CodeEditor
                   value={answers[answerKey] || ''}
