@@ -14,8 +14,8 @@ from common.exceptions import (
     GuestSessionNotFoundError,
     GuestTokenMismatchError,
     PermissionDeniedError,
+    ProblemInProgressError,
     NotFoundError,
-    GenerationError,
     GradingError,
 )
 from common.error_codes import ErrorCode
@@ -26,7 +26,7 @@ from .services import (
     AnswerGrader,
     AnswerGraderError,
 )
-from .models import ProblemGroup, Problem, Answer
+from .models import ProblemGroup, Problem, Answer, Explanation, ModelAnswer
 from .ranking_service import get_ranking, Period, ScoreType
 
 # answer_body の長さ制限（約50KB）
@@ -37,21 +37,138 @@ class GenerateProblemView(APIView):
     """
     POST /api/v1/problem-groups/generate
 
-    問題生成エンドポイント
-    - ログインユーザー: DB保存して永続化
-    - ゲストユーザー: 一時データとして返す（1問のみ）
+    問題生成エンドポイント（バッチ専用）
+    - 在庫チェック＋補充を行う
+    - アクセス制限：バッチ専用API
+    - 認証：X-Batch-Secretヘッダーが必要
     """
 
     def post(self, request):
         """
-        問題を生成する
+        問題を生成・補充する（バッチ専用API）
 
         Request Body:
             {
-                "difficulty": "easy" | "medium" | "hard",
-                "app_scale": "small" | "medium" | "large",
-                "mode": "db_only" | "api_only" | "both"
+                "difficulties": ["easy", "medium", "hard"]  // 省略時は全難易度を処理
             }
+            または
+            {
+                "difficulty": "easy"  // 従来形式（1つのみ）
+            }
+
+        Response (200):
+            {
+                "data": {
+                    "results": [
+                        {
+                            "difficulty": "easy",
+                            "total_count": 10,
+                            "attempted_count": 5,
+                            "stock_count": 5,
+                            "shortage": 0,
+                            "generated_count": 0,
+                            "problem_group": { ... }  // 最後に生成した問題グループ
+                        },
+                        ...
+                    ],
+                    "total_generated": 0
+                },
+                "error": null
+            }
+        """
+        # バッチ認証チェック
+        from django.conf import settings
+        from .models import ProblemGroupAttempt
+
+        batch_secret = request.headers.get("X-Batch-Secret")
+        expected_secret = getattr(settings, "BATCH_SECRET_KEY", None)
+
+        if not expected_secret or batch_secret != expected_secret:
+            raise PermissionDeniedError(
+                message="このAPIはバッチ専用です。直接アクセスできません。"
+            )
+
+        # リクエストパラメータ取得
+        min_stock = request.data.get("min_stock", 5)
+
+        # バリデーション
+        if not isinstance(min_stock, int) or min_stock < 1:
+            raise ValidationError(message="min_stock は1以上の整数を指定してください")
+
+        difficulties = ["easy", "medium", "hard"]
+        results = []
+        total_generated = 0
+
+        for difficulty in difficulties:
+            # 在庫数をカウント: 全問題数 - 解答済み問題数
+            total_count = ProblemGroup.objects.filter(difficulty=difficulty).count()
+
+            # 少なくとも1人以上が解答した問題グループのIDを取得
+            attempted_ids = (
+                ProblemGroupAttempt.objects.filter(problem_group__difficulty=difficulty)
+                .values_list("problem_group_id", flat=True)
+                .distinct()
+            )
+
+            attempted_count = len(set(attempted_ids))
+            stock_count = total_count - attempted_count
+
+            # 補充が必要な場合
+            generated_count = 0
+            shortage = max(0, min_stock - stock_count)
+
+            if shortage > 0:
+                # 不足分を生成
+                for _ in range(shortage):
+                    try:
+                        generator = ProblemGenerator()
+                        problem_group, problems, _ = generator.generate(
+                            difficulty=difficulty
+                        )
+                        generated_count += 1
+                        total_generated += 1
+                    except ProblemGeneratorError:
+                        # エラーが発生しても次の問題生成は続行
+                        continue
+
+            results.append(
+                {
+                    "difficulty": difficulty,
+                    "total_count": total_count + generated_count,
+                    "attempted_count": attempted_count,
+                    "stock_count": stock_count + generated_count,
+                    "shortage": shortage,
+                    "generated_count": generated_count,
+                }
+            )
+
+        return Response(
+            {
+                "data": {
+                    "results": results,
+                    "total_generated": total_generated,
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class GetProblemGroupView(APIView):
+    """
+    GET /api/v1/problem-groups
+
+    新規問題取得エンドポイント
+    - ログインユーザー：未解答の問題を1つ払い出し
+    - ゲストユーザー：ランダムに1つ払い出し（1問のみ）
+    """
+
+    def get(self, request):
+        """
+        難易度を指定して、新規問題を取得する
+
+        Query Parameters:
+            difficulty (required): easy | medium | hard
 
         Response (200):
             {
@@ -59,15 +176,16 @@ class GenerateProblemView(APIView):
                     "kind": "persisted" | "guest",
                     "problem_group": { ... },
                     "problems": [ ... ],
-                    "guest_token": "..." (ゲストの場合のみ)
+                    "guest_token": "..." (ゲストのみ)
                 },
                 "error": null
             }
         """
-        # リクエストパラメータ取得
-        difficulty = request.data.get("difficulty")
-        app_scale = request.data.get("app_scale")
-        mode = request.data.get("mode")
+        import secrets
+        from .models import ProblemGroupAttempt
+
+        # クエリパラメータ取得
+        difficulty = request.query_params.get("difficulty")
 
         # バリデーション
         if not difficulty or difficulty not in ["easy", "medium", "hard"]:
@@ -75,57 +193,124 @@ class GenerateProblemView(APIView):
                 message="difficulty は easy, medium, hard のいずれかを指定してください"
             )
 
-        if not app_scale or app_scale not in ["small", "medium", "large"]:
-            raise ValidationError(
-                message="app_scale は small, medium, large のいずれかを指定してください"
-            )
-
-        if not mode or mode not in ["db_only", "api_only", "both"]:
-            raise ValidationError(
-                message="mode は db_only, api_only, both のいずれかを指定してください"
-            )
-
-        # ゲスト制限チェック
-        if not request.user.is_authenticated:
-            # ゲストが既に採点完了している場合
-            if request.session.get("guest_completed"):
-                raise GuestLimitReachedError(
-                    message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
+        # ログインユーザーの場合
+        if request.user.is_authenticated:
+            # 既に問題取得済みかチェック
+            if request.session.get("current_problem_group_id"):
+                raise ProblemInProgressError(
+                    message="進行中の問題があります。先に完了してください"
                 )
 
-            # ゲストが既に問題を生成している場合
-            if request.session.get("guest_problem_token"):
-                raise GuestAlreadyGeneratedError(
-                    message="ゲストユーザーは既に問題を生成しています。先に回答を提出してください。"
-                )
+            # 未解答の問題を取得（最古のものから払い出し）
+            attempted_ids = ProblemGroupAttempt.objects.filter(
+                user=request.user
+            ).values_list("problem_group_id", flat=True)
 
-        # 問題生成
-        try:
-            generator = ProblemGenerator()
-            user = request.user if request.user.is_authenticated else None
-            problem_group, problems, response_data = generator.generate(
-                difficulty=difficulty,
-                app_scale=app_scale,
-                mode=mode,
-                user=user,
+            problem_group = (
+                ProblemGroup.objects.filter(difficulty=difficulty)
+                .exclude(problem_group_id__in=attempted_ids)
+                .order_by("created_at")
+                .first()
             )
 
-            # ゲストの場合、セッションにトークンを保存
-            if not request.user.is_authenticated:
-                request.session["guest_problem_token"] = response_data["guest_token"]
-                # 生成データもセッションに保存（採点時に使用）
-                request.session["guest_problem_data"] = response_data
+            if not problem_group:
+                raise NotFoundError(
+                    error_code=ErrorCode.PROBLEM_NOT_FOUND,
+                    message=f"難易度 {difficulty} の問題の上限に達しました。新しい問題を解くには時間をおいてから再度お試しください。",
+                )
+
+            # セッションに記録
+            request.session["current_problem_group_id"] = problem_group.problem_group_id
+
+            # 問題一覧を取得
+            problems = list(problem_group.problems.all().order_by("order_index"))
 
             return Response(
                 {
-                    "data": response_data,
+                    "data": {
+                        "kind": "persisted",
+                        "problem_group": {
+                            "problem_group_id": problem_group.problem_group_id,
+                            "title": problem_group.title,
+                            "description": problem_group.description,
+                            "difficulty": problem_group.difficulty,
+                        },
+                        "problems": [
+                            {
+                                "problem_id": p.problem_id,
+                                "problem_group_id": problem_group.problem_group_id,
+                                "order_index": p.order_index,
+                                "problem_type": p.problem_type,
+                                "problem_body": p.problem_body,
+                            }
+                            for p in problems
+                        ],
+                    },
                     "error": None,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        except ProblemGeneratorError as e:
-            raise GenerationError(message=str(e))
+        # ゲストユーザーの場合
+        else:
+            # ゲスト制限チェック
+            if request.session.get("guest_completed"):
+                raise GuestLimitReachedError(
+                    message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
+                )
+
+            if request.session.get("guest_problem_token"):
+                raise GuestAlreadyGeneratedError(
+                    message="ゲストユーザーは既に問題を取得済みです。先に回答を完了してください。"
+                )
+
+            # 最古の1題を払い出し
+            problem_group = (
+                ProblemGroup.objects.filter(difficulty=difficulty)
+                .order_by("created_at")
+                .first()
+            )
+
+            if not problem_group:
+                raise NotFoundError(
+                    error_code=ErrorCode.PROBLEM_NOT_FOUND,
+                    message=f"難易度 {difficulty} の問題が在庫にありません。",
+                )
+
+            # ゲストトークン発行
+            guest_token = secrets.token_urlsafe(32)
+            request.session["guest_problem_token"] = guest_token
+            request.session["current_problem_group_id"] = problem_group.problem_group_id
+
+            # 問題一覧を取得
+            problems = list(problem_group.problems.all().order_by("order_index"))
+
+            return Response(
+                {
+                    "data": {
+                        "kind": "guest",
+                        "guest_token": guest_token,
+                        "problem_group": {
+                            "problem_group_id": problem_group.problem_group_id,
+                            "title": problem_group.title,
+                            "description": problem_group.description,
+                            "difficulty": problem_group.difficulty,
+                        },
+                        "problems": [
+                            {
+                                "problem_id": p.problem_id,
+                                "problem_group_id": problem_group.problem_group_id,
+                                "order_index": p.order_index,
+                                "problem_type": p.problem_type,
+                                "problem_body": p.problem_body,
+                            }
+                            for p in problems
+                        ],
+                    },
+                    "error": None,
+                },
+                status=status.HTTP_200_OK,
+            )
 
 
 class GradeAnswerView(APIView):
@@ -157,8 +342,8 @@ class GradeAnswerView(APIView):
             {
                 "guest_token": "opaque-token",
                 "answers": [
-                    {"order_index": 1, "answer_body": "CREATE TABLE ..."},
-                    {"order_index": 2, "answer_body": "def create_post(...): ..."}
+                    {"problem_id": 1, "answer_body": "CREATE TABLE ..."},
+                    {"problem_id": 2, "answer_body": "def create_post(...): ..."}
                 ]
             }
 
@@ -171,7 +356,7 @@ class GradeAnswerView(APIView):
                             "problem_type": "db",
                             "grade": 2,
                             "grade_display": "○",
-                            "solution": {"version": 1, "solution_body": "...", "explanation": "..."},
+                            "explanation": {"version": 1, "explanation_body": "..."},
                             "answer_id": 456  // ログインユーザーのみ
                         },
                         ...
@@ -241,7 +426,7 @@ class GradeAnswerView(APIView):
         Raises:
             ValidationError: バリデーションエラー
         """
-        key_field = "problem_id" if is_authenticated else "order_index"
+        key_field = "problem_id"
         seen_keys = set()
 
         for idx, answer in enumerate(answers):
@@ -260,18 +445,9 @@ class GradeAnswerView(APIView):
                     message=f"answers[{idx}]: 回答は{MAX_ANSWER_BODY_LENGTH}文字以下である必要があります"
                 )
 
-            # ログインユーザーは problem_id 必須
-            if is_authenticated:
-                if answer.get("problem_id") is None:
-                    raise ValidationError(
-                        message=f"answers[{idx}]: problem_id は必須です"
-                    )
-            # ゲストは order_index 必須
-            else:
-                if answer.get("order_index") is None:
-                    raise ValidationError(
-                        message=f"answers[{idx}]: order_index は必須です"
-                    )
+            # problem_id 必須（ログイン/ゲスト共通）
+            if answer.get("problem_id") is None:
+                raise ValidationError(message=f"answers[{idx}]: problem_id は必須です")
 
             key_value = answer.get(key_field)
             if key_value in seen_keys:
@@ -292,6 +468,13 @@ class GradeAnswerView(APIView):
         Returns:
             Response: 採点結果のレスポンス
         """
+        # 進行中セッションと題材IDが一致するか確認
+        current_pg_id = request.session.get("current_problem_group_id")
+        if current_pg_id != problem_group_id:
+            raise PermissionDeniedError(
+                message="この題材は現在のセッションで進行中ではありません"
+            )
+
         # ProblemGroup を取得
         try:
             problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
@@ -301,12 +484,6 @@ class GradeAnswerView(APIView):
                 message=f"問題グループID {problem_group_id} が見つかりません",
             )
 
-        # 所有者チェック
-        if problem_group.created_by_user != request.user:
-            raise PermissionDeniedError(
-                message="この問題グループにはアクセスできません"
-            )
-
         # 問題グループ内の全問題を取得
         problems = list(
             Problem.objects.filter(problem_group=problem_group).order_by("order_index")
@@ -314,6 +491,15 @@ class GradeAnswerView(APIView):
 
         # problem_id → Problem のマッピング
         problem_map = {p.problem_id: p for p in problems}
+
+        # 各問題の最新バージョンの模範解答を取得（事前生成分を優先して返す）
+        model_answers = ModelAnswer.objects.filter(problem__in=problems).order_by(
+            "problem_id", "-version"
+        )
+        latest_model_answer_map = {}
+        for ma in model_answers:
+            if ma.problem_id not in latest_model_answer_map:
+                latest_model_answer_map[ma.problem_id] = ma
 
         # answers の problem_id が全て存在するかチェック
         for answer in answers:
@@ -362,6 +548,13 @@ class GradeAnswerView(APIView):
                     grade=grading_result["grade"],
                 )
 
+                # Explanation を保存（回答のバージョンに合わせる）
+                Explanation.objects.create(
+                    answer=answer_record,
+                    version=answer_record.version,
+                    explanation_body=grading_result["explanation"],
+                )
+
                 results.append(
                     {
                         "problem_ref": {
@@ -373,10 +566,9 @@ class GradeAnswerView(APIView):
                         "grade_display": self.GRADE_DISPLAY_MAP.get(
                             grading_result["grade"], "×"
                         ),
-                        "solution": {
-                            "version": 1,
-                            "solution_body": grading_result["model_answer"],
-                            "explanation": grading_result["explanation"],
+                        "explanation": {
+                            "version": answer_record.version,
+                            "explanation_body": grading_result["explanation"],
                         },
                         "answer_id": answer_record.answer_id,
                     }
@@ -405,40 +597,63 @@ class GradeAnswerView(APIView):
         Returns:
             Response: 採点結果のレスポンス
         """
-        # セッションからゲスト問題データを取得
-        guest_problem_data = request.session.get("guest_problem_data")
-        if not guest_problem_data:
+        # セッションのゲストトークン確認
+        session_token = request.session.get("guest_problem_token")
+        if not session_token:
             raise GuestSessionNotFoundError(
                 message="ゲストセッションが見つかりません。先に問題を生成してください。"
             )
-
-        # ゲストトークンの一致確認
-        session_token = guest_problem_data.get("guest_token")
         if session_token != guest_token:
             raise GuestTokenMismatchError(message="ゲストトークンが一致しません")
 
-        # 問題データを取得
-        problems = guest_problem_data.get("problems", [])
-        problem_map = {p["order_index"]: p for p in problems}
+        # 現在の題材IDを取得してDBから問題を解決
+        current_pg_id = request.session.get("current_problem_group_id")
+        if not current_pg_id:
+            raise GuestSessionNotFoundError(
+                message="題材情報が見つかりません。先に問題を生成してください。"
+            )
 
-        # answers の order_index が全て存在するかチェック
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=current_pg_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_GROUP_NOT_FOUND,
+                message=f"問題グループID {current_pg_id} が見つかりません",
+            )
+
+        problems = list(
+            Problem.objects.filter(problem_group=problem_group).order_by("order_index")
+        )
+        problem_map = {p.problem_id: p for p in problems}
+
+        # 各問題の最新模範解答（事前生成分）を取得
+        model_answers = ModelAnswer.objects.filter(problem__in=problems).order_by(
+            "problem_id", "-version"
+        )
+        latest_model_answer_map = {}
+        for ma in model_answers:
+            if ma.problem_id not in latest_model_answer_map:
+                latest_model_answer_map[ma.problem_id] = ma
+
+        # answers の problem_id が全て存在するかチェック
         for answer in answers:
-            if answer["order_index"] not in problem_map:
+            if answer["problem_id"] not in problem_map:
                 raise NotFoundError(
                     error_code=ErrorCode.PROBLEM_NOT_FOUND,
-                    message=f"order_index {answer['order_index']} の問題が見つかりません",
+                    message=f"問題ID {answer['problem_id']} が見つかりません",
                 )
 
         # 問題と回答のペアリストを構築
         problems_with_answers = []
         for answer in answers:
-            problem = problem_map[answer["order_index"]]
+            problem = problem_map[answer["problem_id"]]
             problems_with_answers.append(
                 {
-                    "order_index": problem["order_index"],
-                    "problem_type": problem["problem_type"],
-                    "problem_body": problem["problem_body"],
+                    "order_index": problem.order_index,
+                    "problem_type": problem.problem_type,
+                    "problem_body": problem.problem_body,
                     "answer_body": answer["answer_body"],
+                    "problem_id": problem.problem_id,
                 }
             )
 
@@ -460,6 +675,7 @@ class GradeAnswerView(APIView):
             results.append(
                 {
                     "problem_ref": {
+                        "problem_id": item["problem_id"],
                         "order_index": item["order_index"],
                     },
                     "problem_type": item["problem_type"],
@@ -467,10 +683,9 @@ class GradeAnswerView(APIView):
                     "grade_display": self.GRADE_DISPLAY_MAP.get(
                         grading_result["grade"], "×"
                     ),
-                    "solution": {
+                    "explanation": {
                         "version": 1,
-                        "solution_body": grading_result["model_answer"],
-                        "explanation": grading_result["explanation"],
+                        "explanation_body": grading_result["explanation"],
                     },
                 }
             )
@@ -478,9 +693,7 @@ class GradeAnswerView(APIView):
         # order_index でソート
         results.sort(key=lambda x: x["problem_ref"]["order_index"])
 
-        # 採点成功後、guest_completed=True を設定
-        request.session["guest_completed"] = True
-        request.session.modified = True
+        # 採点では guest_completed を変更しない（完了APIで設定）
 
         return Response(
             {
@@ -488,6 +701,83 @@ class GradeAnswerView(APIView):
                 "error": None,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class CompleteProblemGroupView(APIView):
+    """
+    POST /api/v1/problem-groups/{problem_group_id}/complete
+
+    題材の完了エンドポイント
+    - ログインユーザー: attempts に upsert、セッションの current_problem_group_id を削除
+    - ゲストユーザー: guest_token 検証、guest_completed=True を設定し、トークンと current_problem_group_id をクリア
+    """
+
+    def post(self, request, problem_group_id: int):
+        from .models import ProblemGroupAttempt
+
+        # 題材の存在確認
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_GROUP_NOT_FOUND,
+                message=f"問題グループID {problem_group_id} が見つかりません",
+            )
+
+        # ログインユーザーの場合
+        if request.user.is_authenticated:
+            # セッションの題材IDと一致するか検証（払い出した本人のみ許可）
+            current_id = request.session.get("current_problem_group_id")
+            if current_id != problem_group_id:
+                raise PermissionDeniedError(
+                    message="この題材は現在のセッションで進行中ではありません"
+                )
+
+            # upsert (get_or_create)
+            ProblemGroupAttempt.objects.get_or_create(
+                problem_group=problem_group,
+                user=request.user,
+            )
+
+            # セッションクリア
+            if "current_problem_group_id" in request.session:
+                del request.session["current_problem_group_id"]
+            request.session.modified = True
+
+            return Response(
+                {"data": {"ok": True}, "error": None}, status=status.HTTP_200_OK
+            )
+
+        # ゲストユーザーの場合
+        guest_token = request.data.get("guest_token")
+        if not guest_token:
+            raise ValidationError(message="guest_token は必須です")
+
+        session_token = request.session.get("guest_problem_token")
+        if not session_token:
+            raise GuestSessionNotFoundError(
+                message="ゲストセッションが見つかりません。先に問題を生成してください。"
+            )
+        if session_token != guest_token:
+            raise GuestTokenMismatchError(message="ゲストトークンが一致しません")
+
+        current_pg_id = request.session.get("current_problem_group_id")
+        if current_pg_id != problem_group_id:
+            raise PermissionDeniedError(
+                message="この題材は現在のセッションで進行中ではありません"
+            )
+
+        # 完了フラグ設定とセッションクリア
+        request.session["guest_completed"] = True
+        if "guest_problem_token" in request.session:
+            del request.session["guest_problem_token"]
+        if "current_problem_group_id" in request.session:
+            del request.session["current_problem_group_id"]
+        request.session.modified = True
+
+        return Response(
+            {"data": {"ok": True}, "error": None}, status=status.HTTP_200_OK
         )
 
 
@@ -542,10 +832,9 @@ class MyProblemGroupsView(APIView):
 
         # クエリパラメータ取得
         difficulty = request.query_params.get("difficulty")
-        mode = request.query_params.get("mode")
 
         # フィルタ構築
-        filters = {"created_by_user": request.user}
+        filters = {}
 
         if difficulty:
             if difficulty not in ["easy", "medium", "hard"]:
@@ -554,15 +843,33 @@ class MyProblemGroupsView(APIView):
                 )
             filters["difficulty"] = difficulty
 
-        if mode:
-            if mode not in ["db_only", "api_only", "both"]:
-                raise ValidationError(
-                    message="mode は db_only, api_only, both のいずれかを指定してください"
-                )
-            filters["mode"] = mode
+        from .models import ProblemGroupAttempt
+
+        # ユーザーが解いた/進行した題材IDを収集（attempt または回答があるもの）
+        attempted_ids = ProblemGroupAttempt.objects.filter(
+            user=request.user
+        ).values_list("problem_group_id", flat=True)
+        answered_ids = Answer.objects.filter(user=request.user).values_list(
+            "problem__problem_group_id", flat=True
+        )
+        target_ids = set(attempted_ids) | set(answered_ids)
+
+        if not target_ids:
+            return Response(
+                {
+                    "data": {
+                        "items": [],
+                        "next_cursor": None,
+                    },
+                    "error": None,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         # 題材一覧を取得（created_at 降順）
-        problem_groups = ProblemGroup.objects.filter(**filters).order_by("-created_at")
+        problem_groups = ProblemGroup.objects.filter(
+            problem_group_id__in=list(target_ids), **filters
+        ).order_by("-created_at")
 
         # レスポンス構築
         items = []
@@ -592,8 +899,6 @@ class MyProblemGroupsView(APIView):
                     "title": pg.title,
                     "description": pg.description,
                     "difficulty": pg.difficulty,
-                    "app_scale": pg.app_scale,
-                    "mode": pg.mode,
                     "created_at": pg.created_at.isoformat(),
                     "answer_summary": {
                         "total_problems": total_problems,
@@ -621,7 +926,6 @@ class ProblemGroupDetailView(APIView):
 
     題材詳細を取得
     - ログインユーザーのみ
-    - 自分の題材のみアクセス可能
     """
 
     def get(self, request, problem_group_id: int):
@@ -655,11 +959,12 @@ class ProblemGroupDetailView(APIView):
                 message=f"問題グループID {problem_group_id} が見つかりません",
             )
 
-        # 所有者チェック
-        if problem_group.created_by_user != request.user:
-            raise PermissionDeniedError(
-                message="この問題グループにはアクセスできません"
-            )
+        # 再挑戦開始オプション: クエリに start=true がある場合、セッションに current_problem_group_id を設定
+        # （ログインユーザーのみ。復習から同じ題材を再回答可能にするため）
+        start_flag = request.query_params.get("start")
+        if start_flag == "true" and request.user.is_authenticated:
+            request.session["current_problem_group_id"] = problem_group.problem_group_id
+            request.session.modified = True
 
         # 問題一覧を取得
         problems = list(problem_group.problems.all().order_by("order_index"))
@@ -693,8 +998,6 @@ class ProblemGroupDetailView(APIView):
                         "title": problem_group.title,
                         "description": problem_group.description,
                         "difficulty": problem_group.difficulty,
-                        "app_scale": problem_group.app_scale,
-                        "mode": problem_group.mode,
                         "created_at": problem_group.created_at.isoformat(),
                     },
                     "problems": [
@@ -808,6 +1111,64 @@ class RankingView(APIView):
         )
 
 
+class ModelAnswerView(APIView):
+    """
+    GET /api/v1/problems/{problem_id}/model-answers
+
+    模範解答取得エンドポイント
+    - 認証不要（誰でも閲覧可能）
+    """
+
+    def get(self, request, problem_id: int):
+        """
+        特定の小問に対する模範解答を取得する
+
+        Response (200):
+            {
+                "data": {
+                    "model_answers": [
+                        {
+                            "problem_id": 1,
+                            "version": 1,
+                            "model_answer": "CREATE TABLE ..."
+                        }
+                    ]
+                },
+                "error": null
+            }
+        """
+        from .models import ModelAnswer
+
+        # 問題の存在チェック
+        try:
+            problem = Problem.objects.get(problem_id=problem_id)
+        except Problem.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_NOT_FOUND,
+                message=f"問題ID {problem_id} が見つかりません",
+            )
+
+        # 模範解答を取得（複数バージョン対応）
+        model_answers = ModelAnswer.objects.filter(problem=problem).order_by("version")
+
+        return Response(
+            {
+                "data": {
+                    "model_answers": [
+                        {
+                            "problem_id": ma.problem.problem_id,
+                            "version": ma.version,
+                            "model_answer": ma.model_answer,
+                        }
+                        for ma in model_answers
+                    ]
+                },
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class DashboardView(APIView):
     """
     GET /api/v1/dashboard
@@ -896,18 +1257,7 @@ class DashboardView(APIView):
                 "average_grade": round(avg, 2),
             }
 
-        # 3. モード別統計
-        mode_stats = {}
-        for mode in ["db_only", "api_only", "both"]:
-            mode_answers = user_answers.filter(problem__problem_group__mode=mode)
-            count = mode_answers.count()
-            avg = mode_answers.aggregate(avg=Avg("grade"))["avg"] or 0
-            mode_stats[mode] = {
-                "count": count,
-                "average_grade": round(avg, 2),
-            }
-
-        # 4. ストリーク計算
+        # 3. ストリーク計算
         # 日別のアクティビティを取得
         daily_activity = (
             user_answers.annotate(date=TruncDate("created_at"))
@@ -943,7 +1293,7 @@ class DashboardView(APIView):
                     temp_streak = 1
             longest_streak = max(longest_streak, temp_streak)
 
-        # 5. カレンダーヒートマップ用データ（過去90日）
+        # 4. カレンダーヒートマップ用データ（過去90日）
         ninety_days_ago = today - timedelta(days=90)
         calendar_data = (
             user_answers.filter(created_at__date__gte=ninety_days_ago)
@@ -970,7 +1320,6 @@ class DashboardView(APIView):
                     "average_grade": round(avg_grade, 2),
                     "grade_distribution": grade_distribution,
                     "difficulty_stats": difficulty_stats,
-                    "mode_stats": mode_stats,
                     "streak": {
                         "current": current_streak,
                         "longest": longest_streak,
