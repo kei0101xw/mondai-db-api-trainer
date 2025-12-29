@@ -30,6 +30,9 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 if not SECRET_KEY and not DEBUG:
     raise RuntimeError("DJANGO_SECRET_KEY must be set in production")
 
+# Batch API secret key for problem generation
+BATCH_SECRET_KEY = os.environ.get("BATCH_SECRET_KEY")
+
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
 
 
@@ -45,6 +48,7 @@ INSTALLED_APPS = [
     # Third-party apps
     "rest_framework",
     "corsheaders",
+    "django_crontab",
     # Local apps
     "apps.auth.apps.AuthConfig",
     "apps.problems",
@@ -221,6 +225,7 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",  # CSRFトークン用
     "x-requested-with",
+    "x-batch-secret",  # バッチAPI認証用
 ]
 
 # ========================================
@@ -279,3 +284,21 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
 # セッションをリクエストごとに保存する（アクティビティ検知用）
 SESSION_SAVE_EVERY_REQUEST = False
+
+# ========================================
+# Cron Jobs
+# ========================================
+# 注意: Render無料プランでは django-crontab は使用しません
+#       代わりに外部cronサービス（cron-job.org）を使用します
+# 詳細は BATCH_SETUP.md を参照
+
+# CRONJOBS = [
+#     (
+#         "0 * * * *",
+#         "django.core.management.call_command",
+#         ["maintain_stock"],
+#         {},
+#         ">> /tmp/maintain_stock.log 2>&1",
+#     ),
+# ]
+# CRONTAB_COMMENT = "mondai-db-api-trainer"
