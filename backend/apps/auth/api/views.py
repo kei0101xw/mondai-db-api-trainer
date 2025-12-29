@@ -76,7 +76,12 @@ def register_user_view(request: Request) -> Response:
 
     # レスポンス
     user_data = UserSerializer(user).data
-    return success_response(data={"user": user_data}, status=201)
+    # 進行中の問題ID（新規登録時は通常None）
+    current_problem_group_id = request.session.get("current_problem_group_id")
+    return success_response(
+        data={"user": user_data, "current_problem_group_id": current_problem_group_id},
+        status=201,
+    )
 
 
 @api_view(["POST"])
@@ -112,7 +117,12 @@ def login_user_view(request: Request) -> Response:
 
     # レスポンス
     user_data = UserSerializer(user).data
-    return success_response(data={"user": user_data}, status=200)
+    # 進行中の問題ID（セッションから取得）
+    current_problem_group_id = request.session.get("current_problem_group_id")
+    return success_response(
+        data={"user": user_data, "current_problem_group_id": current_problem_group_id},
+        status=200,
+    )
 
 
 @api_view(["POST"])
@@ -148,5 +158,12 @@ def get_current_user_view(request: Request) -> Response:
     """
     # request.userは認証済み（IsAuthenticatedで保証）
     user_data = UserSerializer(request.user).data
+
+    # 進行中の問題ID（セッションから取得）
+    current_problem_group_id = request.session.get("current_problem_group_id")
+
     # レスポンス
-    return success_response(data={"user": user_data}, status=200)
+    return success_response(
+        data={"user": user_data, "current_problem_group_id": current_problem_group_id},
+        status=200,
+    )
