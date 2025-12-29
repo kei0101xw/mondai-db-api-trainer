@@ -58,6 +58,7 @@ class ErrorCode(str, Enum):
     MISSING_GUEST_INFO = "MISSING_GUEST_INFO"
     MISSING_ANSWER_BODY = "MISSING_ANSWER_BODY"
     ANSWER_BODY_TOO_LONG = "ANSWER_BODY_TOO_LONG"
+    PROBLEM_IN_PROGRESS = "PROBLEM_IN_PROGRESS"
     AI_GENERATION_FAILED = "AI_GENERATION_FAILED"
     AI_GRADING_FAILED = "AI_GRADING_FAILED"
     GENERATION_ERROR = "GENERATION_ERROR"
@@ -107,6 +108,7 @@ ERROR_MESSAGES = {
     ErrorCode.MISSING_GUEST_INFO: "ゲスト情報が必要です",
     ErrorCode.MISSING_ANSWER_BODY: "回答本文が必要です",
     ErrorCode.ANSWER_BODY_TOO_LONG: "回答本文が長すぎます",
+    ErrorCode.PROBLEM_IN_PROGRESS: "進行中の問題があります。先に完了してください",
     ErrorCode.AI_GENERATION_FAILED: "問題生成に失敗しました",
     ErrorCode.AI_GRADING_FAILED: "採点処理に失敗しました",
     ErrorCode.GENERATION_ERROR: "生成処理でエラーが発生しました",
