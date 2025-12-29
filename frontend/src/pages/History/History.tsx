@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts';
 import { getMyProblemGroups } from '../../entities/problem/api';
@@ -7,7 +7,6 @@ import { Spinner } from '../../shared/ui/Loading';
 import styles from './History.module.css';
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
-type ModeFilter = 'all' | 'db_only' | 'api_only' | 'both';
 
 const History = () => {
   const navigate = useNavigate();
@@ -16,7 +15,26 @@ const History = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>('all');
-  const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
+
+  const fetchProblemGroups = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params: {
+        difficulty?: 'easy' | 'medium' | 'hard';
+      } = {};
+      if (difficultyFilter !== 'all') {
+        params.difficulty = difficultyFilter;
+      }
+      const response = await getMyProblemGroups(params);
+      setProblemGroups(response.items);
+    } catch (err) {
+      setError('問題一覧の取得に失敗しました');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [difficultyFilter]);
 
   useEffect(() => {
     // 認証状態の確認後、未ログインならログインページへ
@@ -28,38 +46,14 @@ const History = () => {
     if (!isAuthLoading && user) {
       fetchProblemGroups();
     }
-  }, [user, isAuthLoading, navigate]);
-
-  const fetchProblemGroups = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const params: {
-        difficulty?: 'easy' | 'medium' | 'hard';
-        mode?: 'db_only' | 'api_only' | 'both';
-      } = {};
-      if (difficultyFilter !== 'all') {
-        params.difficulty = difficultyFilter;
-      }
-      if (modeFilter !== 'all') {
-        params.mode = modeFilter;
-      }
-      const response = await getMyProblemGroups(params);
-      setProblemGroups(response.items);
-    } catch (err) {
-      setError('問題一覧の取得に失敗しました');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [user, isAuthLoading, navigate, fetchProblemGroups]);
 
   // フィルタ変更時に再取得
   useEffect(() => {
     if (!isAuthLoading && user) {
       fetchProblemGroups();
     }
-  }, [difficultyFilter, modeFilter]);
+  }, [difficultyFilter, isAuthLoading, user, fetchProblemGroups]);
 
   const getGradeEmoji = (grade: number | null): string => {
     switch (grade) {
@@ -97,19 +91,6 @@ const History = () => {
         return 'Hard';
       default:
         return difficulty;
-    }
-  };
-
-  const getModeLabel = (mode: string): string => {
-    switch (mode) {
-      case 'db_only':
-        return 'DB設計';
-      case 'api_only':
-        return 'API設計';
-      case 'both':
-        return 'DB・API';
-      default:
-        return mode;
     }
   };
 
@@ -153,20 +134,6 @@ const History = () => {
             <option value="hard">Hard</option>
           </select>
         </div>
-
-        <div className={styles.filterGroup}>
-          <label className={styles.filterLabel}>問題タイプ</label>
-          <select
-            value={modeFilter}
-            onChange={(e) => setModeFilter(e.target.value as ModeFilter)}
-            className={styles.select}
-          >
-            <option value="all">すべて</option>
-            <option value="db_only">DB設計のみ</option>
-            <option value="api_only">API設計のみ</option>
-            <option value="both">DB・API設計</option>
-          </select>
-        </div>
       </div>
 
       {isLoading ? (
@@ -201,7 +168,6 @@ const History = () => {
                   <span className={`${styles.badge} ${styles[`badge${pg.difficulty}`]}`}>
                     {getDifficultyLabel(pg.difficulty)}
                   </span>
-                  <span className={styles.badge}>{getModeLabel(pg.mode)}</span>
                 </div>
               </div>
 
