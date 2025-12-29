@@ -2,8 +2,6 @@ import { clearProblemCache } from '../api/client';
 
 type PerfStartPayload = {
   difficulty: 'easy' | 'medium' | 'hard';
-  app_scale: 'small' | 'medium' | 'large';
-  mode: 'both' | 'api_only' | 'db_only';
   user_type: 'user' | 'guest';
   user_id?: number | null;
 };
@@ -85,8 +83,6 @@ export function completeGeneratePerf(resultKind: 'persisted' | 'guest'): void {
     'user_type',
     'user_id',
     'difficulty',
-    'app_scale',
-    'mode',
     'result_kind',
     'start_iso',
     'end_iso',
@@ -100,8 +96,6 @@ export function completeGeneratePerf(resultKind: 'persisted' | 'guest'): void {
     record.user_type,
     record.user_id ?? '',
     record.difficulty,
-    record.app_scale,
-    record.mode,
     resultKind,
     record.start_iso,
     endIso,
