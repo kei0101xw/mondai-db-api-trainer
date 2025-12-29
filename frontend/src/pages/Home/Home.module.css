@@ -129,11 +129,26 @@
   color: #3a4e72;
 }
 
+fieldset:disabled .radioLabel {
+  cursor: not-allowed;
+  color: #9ca3af;
+  opacity: 0.6;
+}
+
+fieldset:disabled .radioLabel:hover {
+  color: #9ca3af;
+}
+
 .radio {
   cursor: pointer;
   width: 18px;
   height: 18px;
   accent-color: #3a4e72;
+}
+
+fieldset:disabled .radio {
+  cursor: not-allowed;
+  accent-color: #9ca3af;
 }
 
 .generateButton {
