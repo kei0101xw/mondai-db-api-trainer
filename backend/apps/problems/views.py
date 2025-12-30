@@ -90,7 +90,29 @@ class GenerateProblemView(APIView):
         if not isinstance(min_stock, int) or min_stock < 1:
             raise ValidationError(message="min_stock は1以上の整数を指定してください")
 
-        difficulties = ["easy", "medium", "hard"]
+        # リクエストボディから難易度を取得
+        difficulties_param = request.data.get("difficulties")
+        difficulty_param = request.data.get("difficulty")
+        
+        if difficulties_param is not None:
+            if not isinstance(difficulties_param, list):
+                raise ValidationError(message="difficulties は配列で指定してください")
+            valid_difficulties = ["easy", "medium", "hard"]
+            if not all(d in valid_difficulties for d in difficulties_param):
+                raise ValidationError(
+                    message="difficulties の要素は easy, medium, hard のいずれかを指定してください"
+                )
+            difficulties = difficulties_param
+        elif difficulty_param is not None:
+            if difficulty_param not in ["easy", "medium", "hard"]:
+                raise ValidationError(
+                    message="difficulty は easy, medium, hard のいずれかを指定してください"
+                )
+            difficulties = [difficulty_param]
+        else:
+            # デフォルト：全難易度を処理
+            difficulties = ["easy", "medium", "hard"]
+        
         results = []
         total_generated = 0
 
