@@ -135,7 +135,9 @@ const HistoryDetail = () => {
             </span>
           </div>
           <p className={styles.description}>{problem_group.description}</p>
-          <p className={styles.date}>作成日: {formatDate(problem_group.created_at)}</p>
+          <p className={styles.date}>
+            完了日: {formatDate(problem_group.completed_at || problem_group.created_at)}
+          </p>
         </div>
 
         {/* 問題選択タブ（複数問題がある場合） */}

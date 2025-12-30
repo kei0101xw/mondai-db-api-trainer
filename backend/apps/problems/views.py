@@ -14,7 +14,6 @@ from common.exceptions import (
     GuestSessionNotFoundError,
     GuestTokenMismatchError,
     PermissionDeniedError,
-    ProblemInProgressError,
     NotFoundError,
     GradingError,
 )
@@ -197,9 +196,44 @@ class GetProblemGroupView(APIView):
         if request.user.is_authenticated:
             # 既に問題取得済みかチェック
             if request.session.get("current_problem_group_id"):
-                raise ProblemInProgressError(
-                    message="進行中の問題があります。先に完了してください"
-                )
+                # 既に取得済みの問題を返す（409エラーではなく既存の問題を返す）
+                problem_group_id = request.session.get("current_problem_group_id")
+                try:
+                    problem_group = ProblemGroup.objects.get(
+                        problem_group_id=problem_group_id
+                    )
+                    problems = list(
+                        problem_group.problems.all().order_by("order_index")
+                    )
+
+                    return Response(
+                        {
+                            "data": {
+                                "kind": "persisted",
+                                "problem_group": {
+                                    "problem_group_id": problem_group.problem_group_id,
+                                    "title": problem_group.title,
+                                    "description": problem_group.description,
+                                    "difficulty": problem_group.difficulty,
+                                },
+                                "problems": [
+                                    {
+                                        "problem_id": p.problem_id,
+                                        "problem_group_id": problem_group.problem_group_id,
+                                        "order_index": p.order_index,
+                                        "problem_type": p.problem_type,
+                                        "problem_body": p.problem_body,
+                                    }
+                                    for p in problems
+                                ],
+                            },
+                            "error": None,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+                except ProblemGroup.DoesNotExist:
+                    # セッションのデータが無効な場合はクリアして新規生成に進む
+                    del request.session["current_problem_group_id"]
 
             # 未解答の問題を取得（最古のものから払い出し）
             attempted_ids = ProblemGroupAttempt.objects.filter(
@@ -866,14 +900,21 @@ class MyProblemGroupsView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # 題材一覧を取得（created_at 降順）
-        problem_groups = ProblemGroup.objects.filter(
-            problem_group_id__in=list(target_ids), **filters
-        ).order_by("-created_at")
+        # 題材一覧を取得（ProblemGroupAttempt の created_at 降順）
+        from django.db.models import Max
+
+        problem_groups_with_attempts = (
+            ProblemGroup.objects.filter(
+                problem_group_id__in=list(target_ids), **filters
+            )
+            .prefetch_related("attempts")
+            .annotate(attempt_date=Max("attempts__created_at"))
+            .order_by("-attempt_date")
+        )
 
         # レスポンス構築
         items = []
-        for pg in problem_groups:
+        for pg in problem_groups_with_attempts:
             # 問題数と回答状況を取得
             problems = list(pg.problems.all().order_by("order_index"))
             total_problems = len(problems)
@@ -893,13 +934,27 @@ class MyProblemGroupsView(APIView):
                 else:
                     latest_grades.append(None)
 
+            # 問題完了日時を取得（attempt_date がない場合は最新回答の created_at を使用）
+            completion_date = pg.attempt_date
+            if not completion_date:
+                # attempt がない場合は、最新回答の created_at を使用
+                latest_answer = (
+                    Answer.objects.filter(problem__problem_group=pg, user=request.user)
+                    .order_by("-created_at")
+                    .first()
+                )
+                if latest_answer:
+                    completion_date = latest_answer.created_at
+
             items.append(
                 {
                     "problem_group_id": pg.problem_group_id,
                     "title": pg.title,
                     "description": pg.description,
                     "difficulty": pg.difficulty,
-                    "created_at": pg.created_at.isoformat(),
+                    "completed_at": completion_date.isoformat()
+                    if completion_date
+                    else None,
                     "answer_summary": {
                         "total_problems": total_problems,
                         "answered_problems": answered_count,
@@ -989,6 +1044,14 @@ class ProblemGroupDetailView(APIView):
                 for a in user_answers
             ]
 
+        # 問題完了日を取得（ProblemGroupAttempt の created_at）
+        from .models import ProblemGroupAttempt
+
+        attempt = ProblemGroupAttempt.objects.filter(
+            problem_group=problem_group, user=request.user
+        ).first()
+        completed_at = attempt.created_at.isoformat() if attempt else None
+
         # レスポンス構築
         return Response(
             {
@@ -999,6 +1062,7 @@ class ProblemGroupDetailView(APIView):
                         "description": problem_group.description,
                         "difficulty": problem_group.difficulty,
                         "created_at": problem_group.created_at.isoformat(),
+                        "completed_at": completed_at,
                     },
                     "problems": [
                         {

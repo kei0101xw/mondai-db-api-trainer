@@ -182,7 +182,7 @@ const History = () => {
                     </span>
                   ))}
                 </div>
-                <span className={styles.date}>{formatDate(pg.created_at)}</span>
+                <span className={styles.date}>{formatDate(pg.completed_at || '')}</span>
               </div>
             </div>
           ))}
