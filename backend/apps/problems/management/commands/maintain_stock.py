@@ -50,18 +50,14 @@ class Command(BaseCommand):
         total_generated = 0
 
         for difficulty in difficulties:
-            # 在庫数をカウント: 全問題数 - 解答済み問題数
-            # problem_group_attempts に存在しない problem_group の数を計算
             total_count = ProblemGroup.objects.filter(difficulty=difficulty).count()
 
-            # 少なくとも1人以上が解答した問題グループのIDを取得
             attempted_ids = (
                 ProblemGroupAttempt.objects.filter(problem_group__difficulty=difficulty)
                 .values_list("problem_group_id", flat=True)
                 .distinct()
             )
 
-            # 在庫数 = 全問題数 - 解答済み問題数（重複カウントを防ぐため distinct）
             stock_count = total_count - len(set(attempted_ids))
 
             self.stdout.write(
@@ -69,7 +65,6 @@ class Command(BaseCommand):
                 f"(全体 {total_count} - 解答済み {len(set(attempted_ids))})"
             )
 
-            # 補充が必要な場合
             if stock_count < min_stock:
                 shortage = min_stock - stock_count
                 self.stdout.write(
@@ -78,7 +73,6 @@ class Command(BaseCommand):
                     )
                 )
 
-                # 不足分を生成
                 for i in range(shortage):
                     if dry_run:
                         self.stdout.write(
@@ -111,7 +105,6 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"  → 在庫は十分です（最低 {min_stock} 問以上）")
                 )
 
-        # サマリー
         self.stdout.write("\n" + "=" * 60)
         if dry_run:
             self.stdout.write(

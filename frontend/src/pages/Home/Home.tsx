@@ -23,7 +23,6 @@ const Home = () => {
 
   const handleGenerate = async () => {
     if (hasProgressingProblem) {
-      // 進行中の問題がある場合は、既存の問題を取得して表示
       try {
         setIsLoading(true);
         const problemGroupId = user?.current_problem_group_id || guestProblemGroupId;
@@ -32,17 +31,14 @@ const Home = () => {
           return;
         }
 
-        // 既存の問題データを取得
         const detailResponse = await getProblemGroupDetail(problemGroupId);
 
-        // ProblemGroupDetailResponseをGenerateProblemResponseに変換
         const problemData: GenerateProblemResponse = {
           kind: 'persisted',
           problem_group: detailResponse.problem_group,
           problems: detailResponse.problems,
         };
 
-        // 取得した問題データをStateで渡して遷移
         navigate('/solve', {
           state: {
             problemData,
@@ -51,7 +47,6 @@ const Home = () => {
         });
       } catch (error) {
         console.error('既存の問題取得に失敗しました:', error);
-        // フォールバック: Solveページに遷移
         navigate('/solve');
       } finally {
         setIsLoading(false);
@@ -64,7 +59,6 @@ const Home = () => {
       user_type: user ? 'user' : 'guest',
       user_id: user?.user_id ?? null,
     });
-    // パラメータをクエリパラメータとして渡してsolveページに遷移
     navigate(`/solve?difficulty=${difficulty}`);
   };
 

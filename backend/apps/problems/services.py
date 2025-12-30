@@ -16,12 +16,10 @@ User = get_user_model()
 
 
 def _fix_unescaped_newlines(json_str: str) -> str:
-    # シンプル化：前処理は行わずそのまま返す
     return json_str
 
 
 def _attempt_fix_incomplete_json(json_str: str) -> str:
-    # シンプル化：修復は行わずそのまま返す
     return json_str
 
 
@@ -100,10 +98,9 @@ class ProblemGenerator:
         Raises:
             ProblemGeneratorError: 問題生成に失敗した場合
         """
-        # プロンプト構築
+
         prompt = build_problem_generation_prompt(difficulty)
 
-        # Gemini APIで生成
         try:
             response_text = self.gemini_client.generate_content(
                 prompt=prompt,
@@ -115,14 +112,12 @@ class ProblemGenerator:
         except GeminiClientError as e:
             raise ProblemGeneratorError(f"Gemini API呼び出しエラー: {e}") from e
 
-        # JSONパース（前処理付き）
         try:
             json_str = self._extract_json_from_response(response_text)
             generated_data: GeneratedProblemGroup = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise ProblemGeneratorError(f"JSONパースエラー: {e}") from e
         except ValueError as e:
-            # JSON抽出エラー
             debug_snippet = (
                 response_text[:500] if len(response_text) > 500 else response_text
             )
@@ -130,10 +125,8 @@ class ProblemGenerator:
                 f"JSON抽出エラー: {e}\nレスポンス先頭: {debug_snippet}"
             ) from e
 
-        # バリデーション
         self._validate_generated_data(generated_data)
 
-        # DB保存（バッチ専用のため常に保存）
         return self._save_to_db(
             generated_data=generated_data,
             difficulty=difficulty,
@@ -164,7 +157,6 @@ class ProblemGenerator:
         Raises:
             ProblemGeneratorError: バリデーションエラー
         """
-        # 必須フィールドチェック
         if "title" not in data or not data["title"]:
             raise ProblemGeneratorError("title が含まれていません")
         if "description" not in data or not data["description"]:
@@ -181,7 +173,6 @@ class ProblemGenerator:
                 f"問題数が不正です（期待: 2問以上, 実際: {problem_count}）"
             )
 
-        # 各問題のバリデーション
         for idx, problem in enumerate(data["problems"], start=1):
             if "problem_type" not in problem:
                 raise ProblemGeneratorError(
@@ -196,13 +187,11 @@ class ProblemGenerator:
                     f"問題{idx}: problem_body が含まれていません"
                 )
 
-            # problem_type のバリデーション
             if problem["problem_type"] not in ["db", "api"]:
                 raise ProblemGeneratorError(
                     f"問題{idx}: problem_type が不正です（{problem['problem_type']}）"
                 )
 
-        # mode=both ルール: DB問題1問 + API問題1問以上
         problem_types = [p["problem_type"] for p in data["problems"]]
         if problem_types[0] != "db":
             raise ProblemGeneratorError(
@@ -222,7 +211,6 @@ class ProblemGenerator:
                 f"mode=both では API 設計問題は1問以上必要です（実際: {api_count}問）"
             )
 
-        # model_answers のバリデーション
         for idx, model_answer in enumerate(data["model_answers"], start=1):
             if "order_index" not in model_answer:
                 raise ProblemGeneratorError(
@@ -236,7 +224,6 @@ class ProblemGenerator:
                 raise ProblemGeneratorError(
                     f"模範解答{idx}: model_answer が含まれていません"
                 )
-            # versionは1であることを確認
             if model_answer["version"] != 1:
                 raise ProblemGeneratorError(
                     f"模範解答{idx}: version は 1 である必要があります（実際: {model_answer['version']}）"
@@ -260,16 +247,14 @@ class ProblemGenerator:
         """
         from .models import ModelAnswer
 
-        # ProblemGroup作成
         problem_group = ProblemGroup.objects.create(
             title=generated_data["title"],
             description=generated_data["description"],
             difficulty=difficulty,
         )
 
-        # Problem作成
         problems = []
-        problem_id_by_order = {}  # order_index -> problem_id マップ
+        problem_id_by_order = {}
         for problem_data in generated_data["problems"]:
             problem = Problem.objects.create(
                 problem_group=problem_group,
@@ -280,7 +265,6 @@ class ProblemGenerator:
             problems.append(problem)
             problem_id_by_order[problem.order_index] = problem.problem_id
 
-        # ModelAnswer作成
         model_answers = []
         for ma_data in generated_data["model_answers"]:
             problem = next(
@@ -294,7 +278,6 @@ class ProblemGenerator:
                 )
                 model_answers.append(model_answer)
 
-        # レスポンスデータ構築
         response_data = {
             "kind": "persisted",
             "problem_group": {
@@ -356,31 +339,26 @@ class AnswerGrader:
         Raises:
             AnswerGraderError: 採点に失敗した場合
         """
-        # 入力サニタイゼーション
         answer_body = self._sanitize_answer(answer_body)
 
-        # プロンプト構築
         prompt = build_grading_prompt(problem_type, problem_body, answer_body)
 
-        # Gemini APIで採点
         try:
             response_text = self.gemini_client.generate_content(
                 prompt=prompt,
                 temperature=0.3,  # 採点は一貫性を重視するため低めに設定
-                max_output_tokens=8192,  # 採点レスポンス用のトークン数を確保
+                max_output_tokens=8192,
                 response_format="application/json",
-                timeout=90,  # 採点処理は90秒のタイムアウトを設定
+                timeout=90,
             )
         except GeminiClientError as e:
             raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
-        # JSONパース（最小前処理）
         try:
             json_str = self._extract_json_from_response(response_text)
             grading_result: GradingResult = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise AnswerGraderError(f"JSONパースエラー: {e}") from e
         except ValueError as e:
-            # JSON抽出エラー
             debug_snippet = (
                 response_text[:500] if len(response_text) > 500 else response_text
             )
@@ -388,7 +366,6 @@ class AnswerGrader:
                 f"JSON抽出エラー: {e}\nレスポンス先頭: {debug_snippet}"
             ) from e
 
-        # 結果が辞書型かチェック
         if not isinstance(grading_result, dict):
             raise AnswerGraderError(
                 f"採点結果がオブジェクトではありません（型: {type(grading_result).__name__}）"
@@ -410,10 +387,8 @@ class AnswerGrader:
         Returns:
             サニタイズされたテキスト
         """
-        # NFC正規化（合字を分解）
         text = unicodedata.normalize("NFC", text)
 
-        # 制御文字の除去（改行・タブ以外）
         cleaned = []
         for char in text:
             if ord(char) < 32 and char not in "\n\t":
@@ -447,7 +422,6 @@ class AnswerGrader:
         Raises:
             AnswerGraderError: バリデーションエラー
         """
-        # 必須フィールドチェック
         if "grade" not in result:
             raise AnswerGraderError("grade が含まれていません")
         if "model_answer" not in result or not result["model_answer"]:
@@ -498,29 +472,25 @@ class AnswerGrader:
                 }
             )
 
-        # プロンプト構築
         prompt = build_batch_grading_prompt(sanitized_items)
 
-        # Gemini APIで一括採点
         try:
             response_text = self.gemini_client.generate_content(
                 prompt=prompt,
                 temperature=0.3,  # 採点は一貫性を重視するため低めに設定
                 max_output_tokens=65536,  # 一括採点は複数問題の模範解答を含むため大きめに設定
                 response_format="application/json",
-                timeout=90,  # 一括採点は90秒のタイムアウトを設定
+                timeout=90,
             )
         except GeminiClientError as e:
             raise AnswerGraderError(f"Gemini API呼び出しエラー: {e}") from e
 
-        # JSONパース（最小前処理）
         try:
             json_str = self._extract_json_from_response(response_text)
             parsed_response = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise AnswerGraderError(f"JSONパースエラー: {e}") from e
         except ValueError as e:
-            # JSON抽出エラー
             debug_snippet = (
                 response_text[:500] if len(response_text) > 500 else response_text
             )
@@ -528,13 +498,11 @@ class AnswerGrader:
                 f"JSON抽出エラー: {e}\nレスポンス先頭: {debug_snippet}"
             ) from e
 
-        # 結果が辞書型かチェック
         if not isinstance(parsed_response, dict):
             raise AnswerGraderError(
                 f"採点結果がオブジェクトではありません（型: {type(parsed_response).__name__}）"
             )
 
-        # results 配列のバリデーション
         if "results" not in parsed_response or not isinstance(
             parsed_response["results"], list
         ):
@@ -542,7 +510,6 @@ class AnswerGrader:
 
         results = parsed_response["results"]
 
-        # 各結果のバリデーション
         validated_results: List[BatchGradingResult] = []
         expected_indices = {item["order_index"] for item in problems_with_answers}
 
@@ -557,7 +524,6 @@ class AnswerGrader:
                 }
             )
 
-        # order_index の一致チェック
         result_indices = {r["order_index"] for r in validated_results}
         if result_indices != expected_indices:
             missing = expected_indices - result_indices
@@ -565,7 +531,6 @@ class AnswerGrader:
                 f"採点結果に不足があります（不足: order_index {missing}）"
             )
 
-        # order_index でソートして返す
         validated_results.sort(key=lambda x: x["order_index"])
 
         return validated_results
@@ -583,7 +548,6 @@ class AnswerGrader:
         Raises:
             AnswerGraderError: バリデーションエラー
         """
-        # order_index チェック
         if "order_index" not in result:
             raise AnswerGraderError("order_index が含まれていません")
         if not isinstance(result["order_index"], int):
@@ -591,7 +555,6 @@ class AnswerGrader:
                 f"order_index は整数である必要があります（実際: {result['order_index']}）"
             )
 
-        # 必須フィールドチェック
         if "grade" not in result:
             raise AnswerGraderError(
                 f"order_index {result['order_index']}: grade が含まれていません"
@@ -605,7 +568,6 @@ class AnswerGrader:
                 f"order_index {result['order_index']}: explanation が含まれていません"
             )
 
-        # grade の値チェック
         if not isinstance(result["grade"], int) or result["grade"] not in [0, 1, 2]:
             raise AnswerGraderError(
                 f"order_index {result['order_index']}: grade は 0, 1, 2 のいずれかである必要があります（実際: {result['grade']}）"

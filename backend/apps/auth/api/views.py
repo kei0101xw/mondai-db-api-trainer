@@ -58,31 +58,24 @@ def register_user_view(request: Request) -> Response:
     Raises:
         ValidationError: バリデーションエラー（メールアドレス重複、パスワード要件など）
     """
-    # バリデーション
+
     serializer = UserRegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    # ユーザー登録
     user = register_user(
         email=serializer.validated_data["email"],
         password=serializer.validated_data["password"],
         name=serializer.validated_data["name"],
     )
 
-    # 自動ログイン（backend属性を明示的に指定）
-    # register_user()で作成したユーザーはauthenticate()経由ではないため
-    # backend属性がなく、login()でValueErrorが発生する
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
-    # ゲスト関連のセッション情報をクリア
-    # ゲストモードで問題を生成した後にログインした場合、ゲスト情報を引き継がない
     request.session.pop("guest_problem_token", None)
     request.session.pop("current_problem_group_id", None)
     request.session.pop("guest_completed", None)
 
-    # レスポンス
     user_data = UserSerializer(user).data
-    # 進行中の問題ID（新規登録後はNone）
+
     current_problem_group_id = request.session.get("current_problem_group_id")
     return success_response(
         data={"user": user_data, "current_problem_group_id": current_problem_group_id},
@@ -108,28 +101,23 @@ def login_user_view(request: Request) -> Response:
     Raises:
         InvalidCredentialsError: 認証失敗（メールアドレスまたはパスワードが正しくない）
     """
-    # バリデーション
+
     serializer = UserLoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    # 認証
     user = authenticate_user(
         email=serializer.validated_data["email"],
         password=serializer.validated_data["password"],
     )
 
-    # ログイン（セッション開始）
     login(request, user)
 
-    # ゲスト関連のセッション情報をクリア
-    # ゲストモードで問題を生成した後にログインした場合、ゲスト情報を引き継がない
     request.session.pop("guest_problem_token", None)
     request.session.pop("current_problem_group_id", None)
     request.session.pop("guest_completed", None)
 
-    # レスポンス
     user_data = UserSerializer(user).data
-    # 進行中の問題ID（ログイン後はNone）
+
     current_problem_group_id = request.session.get("current_problem_group_id")
     return success_response(
         data={"user": user_data, "current_problem_group_id": current_problem_group_id},
@@ -150,10 +138,9 @@ def logout_user_view(request: Request) -> Response:
     Returns:
         Response: 成功メッセージを含む統一レスポンス形式
     """
-    # ログアウト（セッション削除）
+
     logout(request)
 
-    # レスポンス
     return success_response(data={"ok": True}, status=200)
 
 
@@ -168,13 +155,11 @@ def get_current_user_view(request: Request) -> Response:
     Returns:
         Response: ログイン中のユーザー情報を含む統一レスポンス形式
     """
-    # request.userは認証済み（IsAuthenticatedで保証）
+
     user_data = UserSerializer(request.user).data
 
-    # 進行中の問題ID（セッションから取得）
     current_problem_group_id = request.session.get("current_problem_group_id")
 
-    # レスポンス
     return success_response(
         data={"user": user_data, "current_problem_group_id": current_problem_group_id},
         status=200,
