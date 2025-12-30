@@ -33,6 +33,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logout = async () => {
     try {
+      // ログアウト前にCSRFトークンを再取得（セッション破棄前に有効なトークンを確保）
+      await fetchCsrfToken();
       await apiLogoutUser();
       setUser(null);
       setGuestProblemGroupId(null);
