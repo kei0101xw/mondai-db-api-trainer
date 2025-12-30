@@ -74,9 +74,15 @@ def register_user_view(request: Request) -> Response:
     # backend属性がなく、login()でValueErrorが発生する
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
+    # ゲスト関連のセッション情報をクリア
+    # ゲストモードで問題を生成した後にログインした場合、ゲスト情報を引き継がない
+    request.session.pop("guest_problem_token", None)
+    request.session.pop("current_problem_group_id", None)
+    request.session.pop("guest_completed", None)
+
     # レスポンス
     user_data = UserSerializer(user).data
-    # 進行中の問題ID（新規登録時は通常None）
+    # 進行中の問題ID（新規登録後はNone）
     current_problem_group_id = request.session.get("current_problem_group_id")
     return success_response(
         data={"user": user_data, "current_problem_group_id": current_problem_group_id},
@@ -115,9 +121,15 @@ def login_user_view(request: Request) -> Response:
     # ログイン（セッション開始）
     login(request, user)
 
+    # ゲスト関連のセッション情報をクリア
+    # ゲストモードで問題を生成した後にログインした場合、ゲスト情報を引き継がない
+    request.session.pop("guest_problem_token", None)
+    request.session.pop("current_problem_group_id", None)
+    request.session.pop("guest_completed", None)
+
     # レスポンス
     user_data = UserSerializer(user).data
-    # 進行中の問題ID（セッションから取得）
+    # 進行中の問題ID（ログイン後はNone）
     current_problem_group_id = request.session.get("current_problem_group_id")
     return success_response(
         data={"user": user_data, "current_problem_group_id": current_problem_group_id},

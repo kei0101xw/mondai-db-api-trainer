@@ -88,7 +88,34 @@ const Solve = () => {
         }
 
         // SessionStorageにデータがない場合のみAPI呼び出し
-        const response = await generateProblem({ difficulty });
+        let response;
+        try {
+          response = await generateProblem({ difficulty });
+        } catch (err) {
+          // 409 エラー（進行中の問題がある）の場合、既に生成済みの問題を取得
+          const apiError = err as { status?: number };
+          if (apiError.status === 409 && user?.current_problem_group_id) {
+            // 既に生成済みの問題を取得（ログインユーザーのみ）
+            const { getProblemGroupDetail } = await import('../../entities/problem/api');
+            const detailResponse = await getProblemGroupDetail(user.current_problem_group_id, {
+              start: true,
+            });
+            // ProblemGroupDetailResponseをGenerateProblemResponseに変換
+            const convertedResponse: GenerateProblemResponse = {
+              kind: 'persisted',
+              problem_group: detailResponse.problem_group,
+              problems: detailResponse.problems,
+            };
+            // 既存の問題データをSessionStorageに保存
+            sessionStorage.setItem(storageKey, JSON.stringify(convertedResponse));
+            setProblemData(convertedResponse);
+            setLoading(false);
+            setHasFetched(true);
+            return;
+          }
+          // 他のエラーは再スロー
+          throw err;
+        }
 
         setProblemData(response);
         setHasFetched(true);
@@ -116,6 +143,7 @@ const Solve = () => {
     searchParams,
     isAuthenticated,
     user?.user_id,
+    user?.current_problem_group_id,
     isAuthLoading,
     location.state,
     hasFetched,

@@ -67,7 +67,7 @@ export interface ProblemGroupListItem {
   title: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
-  created_at: string;
+  completed_at: string | null;
   answer_summary: AnswerSummary;
 }
 
@@ -89,7 +89,11 @@ export interface AnswerHistory {
 }
 
 export interface ProblemGroupDetailResponse {
-  problem_group: ProblemGroup & { problem_group_id: number; created_at: string };
+  problem_group: ProblemGroup & {
+    problem_group_id: number;
+    created_at: string;
+    completed_at?: string;
+  };
   problems: (Problem & { problem_id: number })[];
   answers: Record<number, AnswerHistory[]>;
 }

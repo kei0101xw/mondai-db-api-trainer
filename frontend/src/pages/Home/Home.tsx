@@ -5,6 +5,8 @@ import RankingCard from '../../components/RankingCard/RankingCard';
 import DashboardCard from '../../components/DashboardCard/DashboardCard';
 import styles from './Home.module.css';
 import { startGeneratePerf } from '../../shared/lib/perf';
+import { getProblemGroupDetail } from '../../entities/problem/api';
+import type { GenerateProblemResponse } from '../../entities/problem/types';
 
 type LeftPanelTab = 'ranking' | 'mypage';
 
@@ -14,16 +16,49 @@ const Home = () => {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
   // ログインユーザーはマイページをデフォルト表示
   const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTab>(user ? 'mypage' : 'ranking');
+  const [isLoading, setIsLoading] = useState(false);
 
   // 進行中の問題を判定（ログインユーザーはuser.current_problem_group_id、ゲストはguestProblemGroupId）
   const hasProgressingProblem = user ? !!user.current_problem_group_id : !!guestProblemGroupId;
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (hasProgressingProblem) {
-      // 進行中の問題がある場合は、Solveページに遷移
-      navigate('/solve');
+      // 進行中の問題がある場合は、既存の問題を取得して表示
+      try {
+        setIsLoading(true);
+        const problemGroupId = user?.current_problem_group_id || guestProblemGroupId;
+        if (!problemGroupId) {
+          navigate('/solve');
+          return;
+        }
+
+        // 既存の問題データを取得
+        const detailResponse = await getProblemGroupDetail(problemGroupId);
+
+        // ProblemGroupDetailResponseをGenerateProblemResponseに変換
+        const problemData: GenerateProblemResponse = {
+          kind: 'persisted',
+          problem_group: detailResponse.problem_group,
+          problems: detailResponse.problems,
+        };
+
+        // 取得した問題データをStateで渡して遷移
+        navigate('/solve', {
+          state: {
+            problemData,
+            retryProblemGroupId: problemGroupId,
+          },
+        });
+      } catch (error) {
+        console.error('既存の問題取得に失敗しました:', error);
+        // フォールバック: Solveページに遷移
+        navigate('/solve');
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
+
     startGeneratePerf({
       difficulty,
       user_type: user ? 'user' : 'guest',
@@ -123,8 +158,12 @@ const Home = () => {
             </div>
           </fieldset>
 
-          <button type="submit" className={styles.generateButton}>
-            {hasProgressingProblem ? 'すでに生成した問題を解く' : '問題を生成する'}
+          <button type="submit" className={styles.generateButton} disabled={isLoading}>
+            {isLoading
+              ? 'ロード中...'
+              : hasProgressingProblem
+                ? 'すでに生成した問題を解く'
+                : '問題を生成する'}
           </button>
 
           {!user && (
