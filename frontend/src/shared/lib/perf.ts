@@ -36,7 +36,6 @@ function saveCsv(content: string, filename: string): void {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (e) {
-    // CSV保存に失敗してもUIは変えない
     console.warn('CSV 自動保存に失敗しました', e);
   }
 }
@@ -44,7 +43,6 @@ function saveCsv(content: string, filename: string): void {
 export function startGeneratePerf(payload: PerfStartPayload): void {
   if (!isPerfEnabled) return;
 
-  // 既存の問題キャッシュをクリアして、API呼び出しを計測対象にする
   clearProblemCache();
 
   const record: PerfRecord = {
@@ -60,18 +58,16 @@ export function completeGeneratePerf(resultKind: 'persisted' | 'guest'): void {
   if (!isPerfEnabled) return;
 
   const raw = sessionStorage.getItem(PERF_STORAGE_KEY);
-  if (!raw) return; // 計測対象外の遷移
+  if (!raw) return;
 
   let record: PerfRecord | null = null;
   try {
     record = JSON.parse(raw) as PerfRecord;
   } catch {
-    // 破損していたら諦める
     sessionStorage.removeItem(PERF_STORAGE_KEY);
     return;
   }
 
-  // 計測完了
   const endMs = Date.now();
   const durationMs = endMs - record.start_ms;
   const endIso = nowIso();
@@ -91,7 +87,6 @@ export function completeGeneratePerf(resultKind: 'persisted' | 'guest'): void {
 
   const row = [
     record.id,
-    // ダウンロードファイル名に近い形の人間可読な時刻
     new Date().toLocaleString(),
     record.user_type,
     record.user_id ?? '',
@@ -107,9 +102,7 @@ export function completeGeneratePerf(resultKind: 'persisted' | 'guest'): void {
   const csv = `${header}\n${row}\n`;
   const filename = `mondai-generate-perf-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
 
-  // 自動ダウンロード（UI変更なし）
   saveCsv(csv, filename);
 
-  // 計測完了後はクリアして再発火を防ぐ
   sessionStorage.removeItem(PERF_STORAGE_KEY);
 }

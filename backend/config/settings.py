@@ -284,21 +284,3 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
 # セッションをリクエストごとに保存する（アクティビティ検知用）
 SESSION_SAVE_EVERY_REQUEST = False
-
-# ========================================
-# Cron Jobs
-# ========================================
-# 注意: Render無料プランでは django-crontab は使用しません
-#       代わりに外部cronサービス（cron-job.org）を使用します
-# 詳細は BATCH_SETUP.md を参照
-
-# CRONJOBS = [
-#     (
-#         "0 * * * *",
-#         "django.core.management.call_command",
-#         ["maintain_stock"],
-#         {},
-#         ">> /tmp/maintain_stock.log 2>&1",
-#     ),
-# ]
-# CRONTAB_COMMENT = "mondai-db-api-trainer"

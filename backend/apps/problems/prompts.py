@@ -9,7 +9,6 @@ def build_problem_generation_prompt(difficulty: str) -> str:
         Gemini API に投げるプロンプト文字列（問題 + 模範解答を含む）
     """
 
-    # 難易度の説明
     difficulty_desc = {
         "easy": "初心者向け。基本的なテーブル設計やCRUD APIのみ。",
         "medium": "中級者向け。リレーション、インデックス、複雑なクエリを含む。",
@@ -161,7 +160,7 @@ def build_grading_prompt(problem_type: str, problem_body: str, answer_body: str)
 - スケーラビリティやパフォーマンスへの配慮があるか
 - 命名規則が一貫しているか
 """
-    else:  # api
+    else:
         prompt += """
 - エンドポイント設計が要件を満たしているか
 - HTTPメソッド（GET/POST/PUT/DELETE等）の選択が適切か
@@ -226,7 +225,6 @@ def build_batch_grading_prompt(problems_with_answers: list[dict]) -> str:
         Gemini API に投げるプロンプト文字列
     """
 
-    # 各問題の採点セクションを構築
     problems_section = ""
     for item in problems_with_answers:
         order_index = item["order_index"]

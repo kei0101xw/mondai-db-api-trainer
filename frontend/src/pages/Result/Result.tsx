@@ -79,11 +79,9 @@ const Result = () => {
       const userPrefix = isAuthenticated ? `user_${user?.user_id}` : 'guest';
       sessionStorage.removeItem(`mondai_problem_current_${userPrefix}`);
 
-      // ゲストユーザーの場合、guestProblemGroupIdをクリア
       if (!isAuthenticated) {
         setGuestProblemGroupId(null);
       } else {
-        // ログインユーザーの場合、バックエンドのセッション情報を更新するため refreshUser を呼び出す
         await refreshUser();
       }
 
