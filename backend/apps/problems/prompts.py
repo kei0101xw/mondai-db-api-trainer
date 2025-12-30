@@ -134,6 +134,8 @@ def build_grading_prompt(problem_type: str, problem_body: str, answer_body: str)
 
     prompt = f"""あなたは経験豊富なバックエンドエンジニアで、{problem_type_name}問題の採点を行う専門家です。
 
+必ず日本語で回答してください。
+
 # 採点対象
 
 ## 問題
@@ -246,6 +248,8 @@ def build_batch_grading_prompt(problems_with_answers: list[dict]) -> str:
 """
 
     prompt = f"""あなたは経験豊富なバックエンドエンジニアで、データベース設計・API設計問題の採点を行う専門家です。
+
+必ず日本語で回答してください。
 
 以下の複数の問題に対する受講者の回答を一括で採点してください。
 
