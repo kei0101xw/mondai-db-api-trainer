@@ -48,6 +48,10 @@ export interface GradeResult {
     version: number;
     explanation_body: string;
   };
+  model_answer: {
+    version: number;
+    model_answer: string;
+  } | null;
   answer_id?: number;
 }
 

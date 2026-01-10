@@ -8,7 +8,6 @@ import type {
   MyProblemGroupsResponse,
   ProblemGroupDetailResponse,
   DashboardData,
-  ModelAnswersResponse,
 } from './types';
 
 export const generateProblem = async (
@@ -72,13 +71,6 @@ export const completeProblemGroup = async (
   const response = await apiClient.post<{ ok: boolean }>(
     `/problem-groups/${problemGroupId}/complete`,
     payload,
-  );
-  return response;
-};
-
-export const getModelAnswers = async (problemId: number): Promise<ModelAnswersResponse> => {
-  const response = await apiClient.get<ModelAnswersResponse>(
-    `/problems/${problemId}/model-answers`,
   );
   return response;
 };

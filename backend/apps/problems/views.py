@@ -517,13 +517,10 @@ class GradeAnswerView(APIView):
 
         problem_map = {p.problem_id: p for p in problems}
 
-        model_answers = ModelAnswer.objects.filter(problem__in=problems).order_by(
-            "problem_id", "-version"
-        )
-        latest_model_answer_map = {}
-        for ma in model_answers:
-            if ma.problem_id not in latest_model_answer_map:
-                latest_model_answer_map[ma.problem_id] = ma
+        latest_model_answers = ModelAnswer.objects.filter(
+            problem__in=problems
+        ).order_by('problem_id', '-version').distinct('problem_id')
+        latest_model_answer_map = {ma.problem_id: ma for ma in latest_model_answers}
 
         for answer in answers:
             if answer["problem_id"] not in problem_map:
@@ -572,6 +569,7 @@ class GradeAnswerView(APIView):
                     explanation_body=grading_result["explanation"],
                 )
 
+                model_answer_obj = latest_model_answer_map.get(problem.problem_id)
                 results.append(
                     {
                         "problem_ref": {
@@ -587,6 +585,10 @@ class GradeAnswerView(APIView):
                             "version": answer_record.version,
                             "explanation_body": grading_result["explanation"],
                         },
+                        "model_answer": {
+                            "version": model_answer_obj.version,
+                            "model_answer": model_answer_obj.model_answer,
+                        } if model_answer_obj else None,
                         "answer_id": answer_record.answer_id,
                     }
                 )
@@ -640,13 +642,10 @@ class GradeAnswerView(APIView):
         )
         problem_map = {p.problem_id: p for p in problems}
 
-        model_answers = ModelAnswer.objects.filter(problem__in=problems).order_by(
-            "problem_id", "-version"
-        )
-        latest_model_answer_map = {}
-        for ma in model_answers:
-            if ma.problem_id not in latest_model_answer_map:
-                latest_model_answer_map[ma.problem_id] = ma
+        latest_model_answers = ModelAnswer.objects.filter(
+            problem__in=problems
+        ).order_by('problem_id', '-version').distinct('problem_id')
+        latest_model_answer_map = {ma.problem_id: ma for ma in latest_model_answers}
 
         for answer in answers:
             if answer["problem_id"] not in problem_map:
@@ -679,6 +678,7 @@ class GradeAnswerView(APIView):
         results = []
         for item in problems_with_answers:
             grading_result = result_map[item["order_index"]]
+            model_answer_obj = latest_model_answer_map.get(item["problem_id"])
 
             results.append(
                 {
@@ -695,6 +695,10 @@ class GradeAnswerView(APIView):
                         "version": 1,
                         "explanation_body": grading_result["explanation"],
                     },
+                    "model_answer": {
+                        "version": model_answer_obj.version,
+                        "model_answer": model_answer_obj.model_answer,
+                    } if model_answer_obj else None,
                 }
             )
 
@@ -1105,62 +1109,6 @@ class RankingView(APIView):
                     "period": period_str,
                     "score_type": score_type_str,
                     "rankings": rankings_data,
-                },
-                "error": None,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
-class ModelAnswerView(APIView):
-    """
-    GET /api/v1/problems/{problem_id}/model-answers
-
-    模範解答取得エンドポイント
-    - 認証不要（誰でも閲覧可能）
-    """
-
-    def get(self, request, problem_id: int):
-        """
-        特定の小問に対する模範解答を取得する
-
-        Response (200):
-            {
-                "data": {
-                    "model_answers": [
-                        {
-                            "problem_id": 1,
-                            "version": 1,
-                            "model_answer": "CREATE TABLE ..."
-                        }
-                    ]
-                },
-                "error": null
-            }
-        """
-        from .models import ModelAnswer
-
-        try:
-            problem = Problem.objects.get(problem_id=problem_id)
-        except Problem.DoesNotExist:
-            raise NotFoundError(
-                error_code=ErrorCode.PROBLEM_NOT_FOUND,
-                message=f"問題ID {problem_id} が見つかりません",
-            )
-
-        model_answers = ModelAnswer.objects.filter(problem=problem).order_by("version")
-
-        return Response(
-            {
-                "data": {
-                    "model_answers": [
-                        {
-                            "problem_id": ma.problem.problem_id,
-                            "version": ma.version,
-                            "model_answer": ma.model_answer,
-                        }
-                        for ma in model_answers
-                    ]
                 },
                 "error": None,
             },

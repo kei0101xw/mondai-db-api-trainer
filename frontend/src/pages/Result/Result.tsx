@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { GenerateProblemResponse, GradeResult } from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
 import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
 import styles from './Result.module.css';
-import { completeProblemGroup, getModelAnswers } from '../../entities/problem/api';
+import { completeProblemGroup } from '../../entities/problem/api';
 
 type TabType = 'problem' | 'solution' | 'grading';
 
@@ -20,46 +20,10 @@ const Result = () => {
   const { user, isAuthenticated, refreshUser, setGuestProblemGroupId } = useAuth();
   const state = location.state as LocationState | null;
   const [activeTab, setActiveTab] = useState<TabType>('grading');
-  const [modelAnswers, setModelAnswers] = useState<Record<number, string>>({});
   const [isCompleting, setIsCompleting] = useState(false);
-  const [modelAnswersError, setModelAnswersError] = useState<string | null>(null);
-  const [isLoadingModelAnswers, setIsLoadingModelAnswers] = useState(true);
   const problemData = state?.problemData;
   const gradeResults = state?.gradeResults;
   const answers = state?.answers ?? {};
-
-  useEffect(() => {
-    if (!problemData) return;
-
-    const fetchModelAnswers = async () => {
-      try {
-        setIsLoadingModelAnswers(true);
-        const results = await Promise.all(
-          problemData.problems.map(async (problem) => {
-            const response = await getModelAnswers(problem.problem_id);
-            const latest = response.model_answers[response.model_answers.length - 1];
-            return [problem.problem_id, latest?.model_answer ?? ''] as const;
-          }),
-        );
-
-        const map: Record<number, string> = {};
-        results.forEach(([problemId, answer]) => {
-          if (answer) {
-            map[problemId] = answer;
-          }
-        });
-        setModelAnswers(map);
-        setModelAnswersError(null);
-      } catch (err) {
-        console.error(err);
-        setModelAnswersError('模範解答の取得に失敗しました');
-      } finally {
-        setIsLoadingModelAnswers(false);
-      }
-    };
-
-    fetchModelAnswers();
-  }, [problemData]);
 
   if (!problemData || !gradeResults) {
     return (
@@ -136,13 +100,7 @@ const Result = () => {
                 </div>
                 <div className={styles.solutionBody}>
                   <CodeEditor
-                    value={
-                      isLoadingModelAnswers
-                        ? '模範解答を取得中です...'
-                        : modelAnswers[result.problem_ref.problem_id] ||
-                          modelAnswersError ||
-                          '模範解答が見つかりません'
-                    }
+                    value={result.model_answer?.model_answer || '模範解答が見つかりません'}
                     language={result.problem_type === 'db' ? 'sql' : 'plain'}
                     readOnly
                   />

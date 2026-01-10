@@ -808,7 +808,7 @@ AI による自動採点と解説表示を行う。
 
 #### POST `/api/v1/grade`
 
-- 用途：小問（problem）ごとの解答を提出し、AI 採点（〇 ×△）とユーザー回答に合わせた解説を返す（模範解答は含まない）
+- 用途：小問（problem）ごとの解答を提出し、AI 採点（〇 ×△）とユーザー回答に合わせた解説、および模範解答を返す
 
 - 認証：
 
@@ -865,18 +865,28 @@ AI による自動採点と解説表示を行う。
         "problem_ref": { "problem_id": 1, "order_index": 1 },
         "problem_type": "db",
         "grade": 2,
+        "grade_display": "○",
         "explanation": {
           "version": 1,
           "explanation_body": "..."
+        },
+        "model_answer": {
+          "version": 1,
+          "model_answer": "CREATE TABLE users (...); ..."
         }
       },
       {
         "problem_ref": { "problem_id": 2, "order_index": 2 },
         "problem_type": "api",
         "grade": 1,
+        "grade_display": "△",
         "explanation": {
           "version": 1,
           "explanation_body": "..."
+        },
+        "model_answer": {
+          "version": 1,
+          "model_answer": "def create_post(...): ..."
         }
       }
     ]
@@ -918,32 +928,7 @@ AI による自動採点と解説表示を行う。
 
 ---
 
-### 7.7 模範解答取得（MVP）
-
-#### GET `/api/v1/problems/{problem_id}/model-answers`
-
-- 用途：特定の小問（problem）に対する模範解答を取得する。採点後の結果画面で使用。
-- 認証：不要（誰でも閲覧可能）
-- Response（200）
-
-```json
-{
-  "data": {
-    "model_answers": [
-      {
-        "problem_id": 1,
-        "version": 1,
-        "model_answer": "CREATE TABLE users (...); ..."
-      }
-    ]
-  },
-  "error": null
-}
-```
-
----
-
-### 7.8 復習（追加機能：MVP 外だが API の形は想定）
+### 7.7 復習（追加機能：MVP 外だが API の形は想定）
 
 #### GET `/api/v1/problem-groups/mine`
 

@@ -7,7 +7,6 @@ from apps.problems.views import (
     RankingView,
     DashboardView,
     GradeAnswerView,
-    ModelAnswerView,
 )
 
 urlpatterns = [
@@ -16,11 +15,6 @@ urlpatterns = [
     path("api/v1/auth/", include("apps.auth.api.urls")),
     path("api/v1/problem-groups/", include("apps.problems.urls")),
     path("api/v1/grade", GradeAnswerView.as_view(), name="grade"),
-    path(
-        "api/v1/problems/<int:problem_id>/model-answers",
-        ModelAnswerView.as_view(),
-        name="model_answers",
-    ),
     path("api/v1/rankings", RankingView.as_view(), name="rankings"),
     path("api/v1/dashboard", DashboardView.as_view(), name="dashboard"),
 ]
