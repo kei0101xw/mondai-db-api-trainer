@@ -2,6 +2,7 @@
 問題生成API エンドポイント
 """
 
+import secrets
 from django.db import transaction
 from rest_framework import status
 from rest_framework.response import Response
@@ -77,10 +78,10 @@ class GenerateProblemView(APIView):
         from django.conf import settings
         from .models import ProblemGroupAttempt
 
-        batch_secret = request.headers.get("X-Batch-Secret")
+        batch_secret = request.headers.get("X-Batch-Secret", "")
         expected_secret = getattr(settings, "BATCH_SECRET_KEY", None)
 
-        if not expected_secret or batch_secret != expected_secret:
+        if not expected_secret or not secrets.compare_digest(batch_secret, expected_secret or ""):
             raise PermissionDeniedError(
                 message="このAPIはバッチ専用です。直接アクセスできません。"
             )
