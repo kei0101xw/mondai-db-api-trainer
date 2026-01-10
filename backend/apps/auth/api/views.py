@@ -76,9 +76,8 @@ def register_user_view(request: Request) -> Response:
 
     user_data = UserSerializer(user).data
 
-    current_problem_group_id = request.session.get("current_problem_group_id")
     return success_response(
-        data={"user": user_data, "current_problem_group_id": current_problem_group_id},
+        data={"user": user_data},
         status=201,
     )
 
@@ -118,9 +117,8 @@ def login_user_view(request: Request) -> Response:
 
     user_data = UserSerializer(user).data
 
-    current_problem_group_id = request.session.get("current_problem_group_id")
     return success_response(
-        data={"user": user_data, "current_problem_group_id": current_problem_group_id},
+        data={"user": user_data},
         status=200,
     )
 
