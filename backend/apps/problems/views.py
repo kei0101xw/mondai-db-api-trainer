@@ -81,7 +81,9 @@ class GenerateProblemView(APIView):
         batch_secret = request.headers.get("X-Batch-Secret", "")
         expected_secret = getattr(settings, "BATCH_SECRET_KEY", None)
 
-        if not expected_secret or not secrets.compare_digest(batch_secret, expected_secret or ""):
+        if not expected_secret or not secrets.compare_digest(
+            batch_secret, expected_secret or ""
+        ):
             raise PermissionDeniedError(
                 message="このAPIはバッチ専用です。直接アクセスできません。"
             )
@@ -94,7 +96,7 @@ class GenerateProblemView(APIView):
         # リクエストボディから難易度を取得
         difficulties_param = request.data.get("difficulties")
         difficulty_param = request.data.get("difficulty")
-        
+
         if difficulties_param is not None:
             if not isinstance(difficulties_param, list):
                 raise ValidationError(message="difficulties は配列で指定してください")
@@ -113,7 +115,7 @@ class GenerateProblemView(APIView):
         else:
             # デフォルト：全難易度を処理
             difficulties = ["easy", "medium", "hard"]
-        
+
         results = []
         total_generated = 0
 
@@ -121,14 +123,14 @@ class GenerateProblemView(APIView):
             # 在庫数をカウント: 全問題数 - 解答済み問題数
             total_count = ProblemGroup.objects.filter(difficulty=difficulty).count()
 
-            # 少なくとも1人以上が解答した問題グループのIDを取得
-            attempted_ids = (
+            # 少なくとも1人以上が解答した問題グループの数をカウント
+            attempted_count = (
                 ProblemGroupAttempt.objects.filter(problem_group__difficulty=difficulty)
-                .values_list("problem_group_id", flat=True)
+                .values("problem_group_id")
                 .distinct()
+                .count()
             )
 
-            attempted_count = len(set(attempted_ids))
             stock_count = total_count - attempted_count
 
             generated_count = 0
