@@ -864,30 +864,61 @@ class MyProblemGroupsView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        from django.db.models import Max
+        from django.db.models import Max, Prefetch
 
         problem_groups_with_attempts = (
             ProblemGroup.objects.filter(
                 problem_group_id__in=list(target_ids), **filters
             )
-            .prefetch_related("attempts")
+            .prefetch_related(
+                Prefetch(
+                    "problems",
+                    queryset=Problem.objects.order_by("order_index")
+                ),
+                "attempts"
+            )
             .annotate(attempt_date=Max("attempts__created_at"))
             .order_by("-attempt_date")
         )
 
+        all_problem_ids_set = set()
+        for pg in problem_groups_with_attempts:
+            all_problem_ids_set.update(p.problem_id for p in pg.problems.all())
+
+
+        latest_answers = (
+            Answer.objects.filter(
+                problem_id__in=list(all_problem_ids_set),
+                user=request.user
+            )
+            .order_by('problem_id', '-created_at')
+            .distinct('problem_id')
+        )
+
+        answer_map = {answer.problem_id: answer for answer in latest_answers}
+
+        latest_answer_dates = (
+            Answer.objects.filter(
+                problem__problem_group_id__in=list(target_ids),
+                user=request.user
+            )
+            .values('problem__problem_group_id')
+            .annotate(latest_created_at=Max('created_at'))
+        )
+        answer_date_map = {
+            item['problem__problem_group_id']: item['latest_created_at']
+            for item in latest_answer_dates
+        }
+
         items = []
         for pg in problem_groups_with_attempts:
-            problems = list(pg.problems.all().order_by("order_index"))
+            problems = list(pg.problems.all())
             total_problems = len(problems)
 
             latest_grades = []
             answered_count = 0
             for problem in problems:
-                latest_answer = (
-                    Answer.objects.filter(problem=problem, user=request.user)
-                    .order_by("-created_at")
-                    .first()
-                )
+                latest_answer = answer_map.get(problem.problem_id)
                 if latest_answer:
                     latest_grades.append(latest_answer.grade)
                     answered_count += 1
@@ -896,13 +927,7 @@ class MyProblemGroupsView(APIView):
 
             completion_date = pg.attempt_date
             if not completion_date:
-                latest_answer = (
-                    Answer.objects.filter(problem__problem_group=pg, user=request.user)
-                    .order_by("-created_at")
-                    .first()
-                )
-                if latest_answer:
-                    completion_date = latest_answer.created_at
+                completion_date = answer_date_map.get(pg.problem_group_id)
 
             items.append(
                 {
@@ -977,24 +1002,23 @@ class ProblemGroupDetailView(APIView):
 
         problems = list(problem_group.problems.all().order_by("order_index"))
 
-        answers_by_problem = {}
+        problem_ids = [p.problem_id for p in problems]
+        all_user_answers = Answer.objects.filter(
+            problem_id__in=problem_ids,
+            user=request.user
+        ).order_by('problem_id', '-created_at')
+
         grade_display_map = {0: "×", 1: "△", 2: "○"}
+        answers_by_problem = {pid: [] for pid in problem_ids}
 
-        for problem in problems:
-            user_answers = Answer.objects.filter(
-                problem=problem, user=request.user
-            ).order_by("-created_at")
-
-            answers_by_problem[problem.problem_id] = [
-                {
-                    "answer_id": a.answer_id,
-                    "answer_body": a.answer_body,
-                    "grade": a.grade,
-                    "grade_display": grade_display_map.get(a.grade, "×"),
-                    "created_at": a.created_at.isoformat(),
-                }
-                for a in user_answers
-            ]
+        for answer in all_user_answers:
+            answers_by_problem[answer.problem_id].append({
+                "answer_id": answer.answer_id,
+                "answer_body": answer.answer_body,
+                "grade": answer.grade,
+                "grade_display": grade_display_map.get(answer.grade, "×"),
+                "created_at": answer.created_at.isoformat(),
+            })
 
         from .models import ProblemGroupAttempt
 
