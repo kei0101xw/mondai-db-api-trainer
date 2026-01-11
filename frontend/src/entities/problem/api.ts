@@ -13,15 +13,15 @@ import type {
 export const generateProblem = async (
   params: GenerateProblemRequest,
 ): Promise<GenerateProblemResponse> => {
-  const response = await apiClient.post<GenerateProblemResponse>(
-    '/problem-groups/generate',
-    params,
+  const searchParams = new URLSearchParams({ difficulty: params.difficulty });
+  const response = await apiClient.get<GenerateProblemResponse>(
+    `/problem-groups?${searchParams.toString()}`,
   );
   return response;
 };
 
 export const gradeAnswers = async (params: GradeRequest): Promise<GradeResponse> => {
-  const response = await apiClient.post<GradeResponse>('/problem-groups/grade', params);
+  const response = await apiClient.post<GradeResponse>('/grade', params);
   return response;
 };
 
@@ -35,9 +35,6 @@ export const getMyProblemGroups = async (
   if (params?.difficulty) {
     searchParams.append('difficulty', params.difficulty);
   }
-  if (params?.mode) {
-    searchParams.append('mode', params.mode);
-  }
   const queryString = searchParams.toString();
   const url = `/problem-groups/mine${queryString ? `?${queryString}` : ''}`;
 
@@ -50,9 +47,11 @@ export const getMyProblemGroups = async (
  */
 export const getProblemGroupDetail = async (
   problemGroupId: number,
+  options?: { start?: boolean },
 ): Promise<ProblemGroupDetailResponse> => {
+  const query = options?.start ? '?start=true' : '';
   const response = await apiClient.get<ProblemGroupDetailResponse>(
-    `/problem-groups/${problemGroupId}`,
+    `/problem-groups/${problemGroupId}${query}`,
   );
   return response;
 };
@@ -62,5 +61,16 @@ export const getProblemGroupDetail = async (
  */
 export const getDashboard = async (): Promise<DashboardData> => {
   const response = await apiClient.get<DashboardData>('/dashboard');
+  return response;
+};
+
+export const completeProblemGroup = async (
+  problemGroupId: number,
+  payload?: { guest_token?: string },
+) => {
+  const response = await apiClient.post<{ ok: boolean }>(
+    `/problem-groups/${problemGroupId}/complete`,
+    payload,
+  );
   return response;
 };

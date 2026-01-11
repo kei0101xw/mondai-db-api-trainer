@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts';
 import { getProblemGroupDetail } from '../../entities/problem/api';
@@ -19,18 +19,7 @@ const HistoryDetail = () => {
   const [activeTab, setActiveTab] = useState<TabType>('answer');
   const [selectedProblemIndex, setSelectedProblemIndex] = useState(0);
 
-  useEffect(() => {
-    if (!isAuthLoading && !user) {
-      navigate('/login', { state: { from: `/history/${problemGroupId}` } });
-      return;
-    }
-
-    if (!isAuthLoading && user && problemGroupId) {
-      fetchDetail();
-    }
-  }, [user, isAuthLoading, problemGroupId, navigate]);
-
-  const fetchDetail = async () => {
+  const fetchDetail = useCallback(async () => {
     if (!problemGroupId) return;
 
     setIsLoading(true);
@@ -44,7 +33,18 @@ const HistoryDetail = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [problemGroupId]);
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      navigate('/login', { state: { from: `/history/${problemGroupId}` } });
+      return;
+    }
+
+    if (!isAuthLoading && user && problemGroupId) {
+      fetchDetail();
+    }
+  }, [user, isAuthLoading, problemGroupId, navigate, fetchDetail]);
 
   const getGradeEmoji = (grade: number): string => {
     switch (grade) {
@@ -96,19 +96,6 @@ const HistoryDetail = () => {
     }
   };
 
-  const getModeLabel = (mode: string): string => {
-    switch (mode) {
-      case 'db_only':
-        return 'DB設計';
-      case 'api_only':
-        return 'API設計';
-      case 'both':
-        return 'DB・API';
-      default:
-        return mode;
-    }
-  };
-
   if (isAuthLoading || isLoading) {
     return (
       <div className={styles.loadingContainer}>
@@ -146,11 +133,11 @@ const HistoryDetail = () => {
             <span className={`${styles.badge} ${styles[`badge${problem_group.difficulty}`]}`}>
               {getDifficultyLabel(problem_group.difficulty)}
             </span>
-            <span className={styles.badge}>{getModeLabel(problem_group.mode)}</span>
-            <span className={styles.badge}>{problem_group.app_scale}</span>
           </div>
           <p className={styles.description}>{problem_group.description}</p>
-          <p className={styles.date}>作成日: {formatDate(problem_group.created_at)}</p>
+          <p className={styles.date}>
+            完了日: {formatDate(problem_group.completed_at || problem_group.created_at)}
+          </p>
         </div>
 
         {/* 問題選択タブ（複数問題がある場合） */}
@@ -246,17 +233,26 @@ const HistoryDetail = () => {
         <div className={styles.actions}>
           <button
             onClick={() => {
-              // 再挑戦機能（Solveページに問題データを渡す）
-              navigate('/solve', {
-                state: {
-                  retryProblemGroupId: problem_group.problem_group_id,
-                  problemData: {
-                    kind: 'persisted',
-                    problem_group,
-                    problems,
-                  },
-                },
-              });
+              // 同じ題材を再回答するため: セッション開始 + 問題データ取得
+              (async () => {
+                try {
+                  const resp = await getProblemGroupDetail(problem_group.problem_group_id, {
+                    start: true,
+                  });
+                  navigate('/solve', {
+                    state: {
+                      retryProblemGroupId: resp.problem_group.problem_group_id,
+                      problemData: {
+                        kind: 'persisted',
+                        problem_group: resp.problem_group,
+                        problems: resp.problems,
+                      },
+                    },
+                  });
+                } catch {
+                  alert('再挑戦の開始に失敗しました');
+                }
+              })();
             }}
             className={styles.retryButton}
           >

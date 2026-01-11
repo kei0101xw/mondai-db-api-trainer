@@ -4,28 +4,73 @@ import { useAuth } from '../../contexts/auth';
 import RankingCard from '../../components/RankingCard/RankingCard';
 import DashboardCard from '../../components/DashboardCard/DashboardCard';
 import styles from './Home.module.css';
+import { startGeneratePerf } from '../../shared/lib/perf';
+import { getProblemGroupDetail } from '../../entities/problem/api';
+import type { GenerateProblemResponse } from '../../entities/problem/types';
 
 type LeftPanelTab = 'ranking' | 'mypage';
 
 const Home = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, guestProblemGroupId } = useAuth();
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
-  const [appScale, setAppScale] = useState<'small' | 'medium' | 'large'>('small');
-  const [mode, setMode] = useState<'both' | 'api_only' | 'db_only'>('both');
   // ログインユーザーはマイページをデフォルト表示
   const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTab>(user ? 'mypage' : 'ranking');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleGenerate = () => {
-    // パラメータをクエリパラメータとして渡してsolveページに遷移
-    navigate(`/solve?difficulty=${difficulty}&app_scale=${appScale}&mode=${mode}`);
+  // 進行中の問題を判定（ログインユーザーはuser.current_problem_group_id、ゲストはguestProblemGroupId）
+  const hasProgressingProblem = user ? !!user.current_problem_group_id : !!guestProblemGroupId;
+
+  const handleGenerate = async () => {
+    if (hasProgressingProblem) {
+      try {
+        setIsLoading(true);
+        const problemGroupId = user?.current_problem_group_id || guestProblemGroupId;
+        if (!problemGroupId) {
+          navigate('/solve');
+          return;
+        }
+
+        const detailResponse = await getProblemGroupDetail(problemGroupId);
+
+        const problemData: GenerateProblemResponse = {
+          kind: 'persisted',
+          problem_group: detailResponse.problem_group,
+          problems: detailResponse.problems,
+        };
+
+        navigate('/solve', {
+          state: {
+            problemData,
+            retryProblemGroupId: problemGroupId,
+          },
+        });
+      } catch (error) {
+        console.error('既存の問題取得に失敗しました:', error);
+        navigate('/solve');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    startGeneratePerf({
+      difficulty,
+      user_type: user ? 'user' : 'guest',
+      user_id: user?.user_id ?? null,
+    });
+    navigate(`/solve?difficulty=${difficulty}`);
   };
 
   return (
     <div className={styles.container}>
       <div className={styles.leftPanel}>
-        <h2>mondAI</h2>
-        <p>DB設計・API設計の練習問題を解いてスキルアップしましょう！</p>
+        <div className={styles.header}>
+          <h1>ホーム</h1>
+          <p className={styles.description}>
+            DB設計・API設計の練習問題を解いてスキルアップしましょう！
+          </p>
+        </div>
 
         {/* タブ切り替え */}
         <div className={styles.tabContainer}>
@@ -52,9 +97,7 @@ const Home = () => {
       <div className={styles.divider}></div>
       <div className={styles.rightPanel}>
         <h3>問題を生成する</h3>
-        <p className={styles.description}>
-          学習したい内容に合わせて、難易度・アプリ規模・問題タイプを設定してください。
-        </p>
+        <p className={styles.description}>学習したい内容に合わせて、難易度を選択してください。</p>
 
         <form
           className={styles.form}
@@ -64,7 +107,7 @@ const Home = () => {
           }}
         >
           {/* 難易度 */}
-          <fieldset className={styles.formGroup}>
+          <fieldset className={styles.formGroup} disabled={hasProgressingProblem}>
             <legend className={styles.label}>難易度</legend>
             <div className={styles.radioGroup}>
               <label htmlFor="difficulty-easy" className={styles.radioLabel}>
@@ -75,6 +118,7 @@ const Home = () => {
                   value="easy"
                   checked={difficulty === 'easy'}
                   onChange={(e) => setDifficulty(e.target.value as 'easy')}
+                  disabled={hasProgressingProblem}
                   className={styles.radio}
                 />
                 <span>Easy</span>
@@ -87,6 +131,7 @@ const Home = () => {
                   value="medium"
                   checked={difficulty === 'medium'}
                   onChange={(e) => setDifficulty(e.target.value as 'medium')}
+                  disabled={hasProgressingProblem}
                   className={styles.radio}
                 />
                 <span>Medium</span>
@@ -99,6 +144,7 @@ const Home = () => {
                   value="hard"
                   checked={difficulty === 'hard'}
                   onChange={(e) => setDifficulty(e.target.value as 'hard')}
+                  disabled={hasProgressingProblem}
                   className={styles.radio}
                 />
                 <span>Hard</span>
@@ -106,94 +152,12 @@ const Home = () => {
             </div>
           </fieldset>
 
-          {/* アプリ規模 */}
-          <fieldset className={styles.formGroup}>
-            <legend className={styles.label}>アプリ規模</legend>
-            <div className={styles.radioGroup}>
-              <label htmlFor="appScale-small" className={styles.radioLabel}>
-                <input
-                  type="radio"
-                  id="appScale-small"
-                  name="appScale"
-                  value="small"
-                  checked={appScale === 'small'}
-                  onChange={(e) => setAppScale(e.target.value as 'small')}
-                  className={styles.radio}
-                />
-                <span>Small</span>
-              </label>
-              <label htmlFor="appScale-medium" className={styles.radioLabel}>
-                <input
-                  type="radio"
-                  id="appScale-medium"
-                  name="appScale"
-                  value="medium"
-                  checked={appScale === 'medium'}
-                  onChange={(e) => setAppScale(e.target.value as 'medium')}
-                  className={styles.radio}
-                />
-                <span>Medium</span>
-              </label>
-              <label htmlFor="appScale-large" className={styles.radioLabel}>
-                <input
-                  type="radio"
-                  id="appScale-large"
-                  name="appScale"
-                  value="large"
-                  checked={appScale === 'large'}
-                  onChange={(e) => setAppScale(e.target.value as 'large')}
-                  className={styles.radio}
-                />
-                <span>Large</span>
-              </label>
-            </div>
-          </fieldset>
-
-          {/* 問題タイプ */}
-          <fieldset className={styles.formGroup}>
-            <legend className={styles.label}>問題タイプ</legend>
-            <div className={styles.radioGroup}>
-              <label htmlFor="mode-both" className={styles.radioLabel}>
-                <input
-                  type="radio"
-                  id="mode-both"
-                  name="mode"
-                  value="both"
-                  checked={mode === 'both'}
-                  onChange={(e) => setMode(e.target.value as 'both')}
-                  className={styles.radio}
-                />
-                <span>DB・API設計</span>
-              </label>
-              <label htmlFor="mode-api_only" className={styles.radioLabel}>
-                <input
-                  type="radio"
-                  id="mode-api_only"
-                  name="mode"
-                  value="api_only"
-                  checked={mode === 'api_only'}
-                  onChange={(e) => setMode(e.target.value as 'api_only')}
-                  className={styles.radio}
-                />
-                <span>API設計のみ</span>
-              </label>
-              <label htmlFor="mode-db_only" className={styles.radioLabel}>
-                <input
-                  type="radio"
-                  id="mode-db_only"
-                  name="mode"
-                  value="db_only"
-                  checked={mode === 'db_only'}
-                  onChange={(e) => setMode(e.target.value as 'db_only')}
-                  className={styles.radio}
-                />
-                <span>DB設計のみ</span>
-              </label>
-            </div>
-          </fieldset>
-
-          <button type="submit" className={styles.generateButton}>
-            問題を生成する
+          <button type="submit" className={styles.generateButton} disabled={isLoading}>
+            {isLoading
+              ? 'ロード中...'
+              : hasProgressingProblem
+                ? 'すでに生成した問題を解く'
+                : '問題を生成する'}
           </button>
 
           {!user && (

@@ -30,6 +30,9 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 if not SECRET_KEY and not DEBUG:
     raise RuntimeError("DJANGO_SECRET_KEY must be set in production")
 
+# Batch API secret key for problem generation
+BATCH_SECRET_KEY = os.environ.get("BATCH_SECRET_KEY")
+
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
 
 
@@ -45,6 +48,7 @@ INSTALLED_APPS = [
     # Third-party apps
     "rest_framework",
     "corsheaders",
+    "django_crontab",
     # Local apps
     "apps.auth.apps.AuthConfig",
     "apps.problems",
@@ -221,6 +225,7 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",  # CSRFトークン用
     "x-requested-with",
+    "x-batch-secret",  # バッチAPI認証用
 ]
 
 # ========================================

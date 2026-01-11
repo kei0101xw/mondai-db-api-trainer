@@ -10,7 +10,10 @@ import type { User, UserResponse, RegisterRequest, LoginRequest } from './types'
  */
 export async function getCurrentUser(): Promise<User> {
   const response = await apiClient.get<UserResponse>('/auth/me');
-  return response.user;
+  return {
+    ...response.user,
+    current_problem_group_id: response.current_problem_group_id,
+  };
 }
 
 /**

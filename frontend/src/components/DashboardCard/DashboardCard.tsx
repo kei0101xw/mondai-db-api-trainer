@@ -15,15 +15,15 @@ import type { DashboardData } from '../../entities/problem/types';
 import styles from './DashboardCard.module.css';
 
 const GRADE_COLORS = {
-  correct: '#22c55e',
-  partial: '#f59e0b',
-  incorrect: '#ef4444',
+  correct: '#05c832',
+  partial: '#3a4e72',
+  incorrect: '#c82424ff',
 };
 
 const DIFFICULTY_COLORS = {
-  easy: '#22c55e',
-  medium: '#f59e0b',
-  hard: '#ef4444',
+  easy: '#05c832',
+  medium: '#3a4e72',
+  hard: '#c82424ff',
 };
 
 /**

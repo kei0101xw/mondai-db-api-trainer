@@ -244,6 +244,24 @@ class PermissionDeniedError(AppException):
         )
 
 
+class ProblemInProgressError(AppException):
+    """進行中の問題が存在するエラー (409 Conflict)."""
+
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
+        """進行中コンフリクトを初期化する.
+
+        Args:
+            message: エラーメッセージ
+            details: 追加の詳細情報
+        """
+        super().__init__(
+            error_code=ErrorCode.PROBLEM_IN_PROGRESS,
+            message=message,
+            details=details,
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
 class GuestSessionNotFoundError(AppException):
     """ゲストセッション未検出エラー."""
 

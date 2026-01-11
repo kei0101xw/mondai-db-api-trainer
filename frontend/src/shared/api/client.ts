@@ -95,6 +95,10 @@ async function request<T>(
 
   // CSRFトークンを設定（POST/PUT/DELETE/PATCH時）
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(config.method || '')) {
+    if (!isRetry) {
+      csrfToken = await fetchCsrfTokenDirect();
+    }
+
     const token = getCsrfToken();
     if (token) {
       config.headers = {

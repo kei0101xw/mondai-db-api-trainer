@@ -1,25 +1,21 @@
 export interface Problem {
-  problem_id?: number; // ゲストの場合は存在しない
-  problem_group_id?: number; // ゲストの場合は存在しない
+  problem_id: number;
+  problem_group_id: number;
   problem_type: 'db' | 'api';
   order_index: number;
   problem_body: string;
 }
 
 export interface ProblemGroup {
-  problem_group_id?: number; // ゲストの場合は存在しない
+  problem_group_id: number;
   title: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
-  app_scale: 'small' | 'medium' | 'large';
-  mode: 'both' | 'api_only' | 'db_only';
-  created_at?: string; // ゲストの場合は存在しない
+  created_at?: string;
 }
 
 export interface GenerateProblemRequest {
   difficulty: 'easy' | 'medium' | 'hard';
-  app_scale: 'small' | 'medium' | 'large';
-  mode: 'both' | 'api_only' | 'db_only';
 }
 
 export interface GenerateProblemResponse {
@@ -30,33 +26,33 @@ export interface GenerateProblemResponse {
 }
 
 export interface GradeAnswer {
-  problem_id?: number; // ログインユーザーの場合
-  order_index?: number; // ゲストユーザーの場合
+  problem_id: number;
   answer_body: string;
 }
 
 export interface GradeRequest {
-  problem_group_id?: number; // ログインユーザーの場合
-  guest_token?: string; // ゲストユーザーの場合
+  problem_group_id?: number;
+  guest_token?: string;
   answers: GradeAnswer[];
-}
-
-export interface ProblemSolution {
-  version: number;
-  solution_body: string;
-  explanation: string;
 }
 
 export interface GradeResult {
   problem_ref: {
-    problem_id?: number;
+    problem_id: number;
     order_index: number;
   };
   problem_type: 'db' | 'api';
   grade: number; // 0: ×, 1: △, 2: ○
   grade_display: string;
-  solution: ProblemSolution;
-  answer_id?: number; // ログインユーザーの場合
+  explanation: {
+    version: number;
+    explanation_body: string;
+  };
+  model_answer: {
+    version: number;
+    model_answer: string;
+  } | null;
+  answer_id?: number;
 }
 
 export interface GradeResponse {
@@ -75,9 +71,7 @@ export interface ProblemGroupListItem {
   title: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
-  app_scale: 'small' | 'medium' | 'large';
-  mode: 'both' | 'api_only' | 'db_only';
-  created_at: string;
+  completed_at: string | null;
   answer_summary: AnswerSummary;
 }
 
@@ -88,7 +82,6 @@ export interface MyProblemGroupsResponse {
 
 export interface MyProblemGroupsRequest {
   difficulty?: 'easy' | 'medium' | 'hard';
-  mode?: 'both' | 'api_only' | 'db_only';
 }
 
 export interface AnswerHistory {
@@ -100,9 +93,23 @@ export interface AnswerHistory {
 }
 
 export interface ProblemGroupDetailResponse {
-  problem_group: ProblemGroup & { problem_group_id: number; created_at: string };
+  problem_group: ProblemGroup & {
+    problem_group_id: number;
+    created_at: string;
+    completed_at?: string;
+  };
   problems: (Problem & { problem_id: number })[];
   answers: Record<number, AnswerHistory[]>;
+}
+
+export interface ModelAnswer {
+  problem_id: number;
+  version: number;
+  model_answer: string;
+}
+
+export interface ModelAnswersResponse {
+  model_answers: ModelAnswer[];
 }
 
 // ダッシュボード用の型定義
@@ -113,11 +120,6 @@ export interface GradeDistribution {
 }
 
 export interface DifficultyStats {
-  count: number;
-  average_grade: number;
-}
-
-export interface ModeStats {
   count: number;
   average_grade: number;
 }
@@ -139,7 +141,6 @@ export interface DashboardData {
   average_grade: number;
   grade_distribution: GradeDistribution;
   difficulty_stats: Record<'easy' | 'medium' | 'hard', DifficultyStats>;
-  mode_stats: Record<'db_only' | 'api_only' | 'both', ModeStats>;
   streak: StreakData;
   activity_calendar: ActivityCalendarEntry[];
 }
