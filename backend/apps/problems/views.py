@@ -9,7 +9,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.exceptions import (
-    ValidationError,
     GuestLimitReachedError,
     GuestAlreadyGeneratedError,
     GuestSessionNotFoundError,
@@ -28,8 +27,35 @@ from .services import (
 )
 from .models import ProblemGroup, Problem, Answer, Explanation, ModelAnswer
 from .ranking_service import get_ranking, Period, ScoreType
+from .serializers import (
+    CompleteProblemGroupDataSerializer,
+    CompleteProblemGroupRequestSerializer,
+    DashboardDataSerializer,
+    GenerateProblemDataSerializer,
+    GenerateProblemRequestSerializer,
+    GradeResponseDataSerializer,
+    GradeAnswerRequestSerializer,
+    MyProblemGroupsDataSerializer,
+    MyProblemGroupsQuerySerializer,
+    ProblemGroupDetailDataSerializer,
+    ProblemGroupFetchDataSerializer,
+    ProblemGroupQuerySerializer,
+    RankingQuerySerializer,
+    RankingDataSerializer,
+)
 
-MAX_ANSWER_BODY_LENGTH = 50000
+
+def serialize_data(serializer_class, payload):
+    """レスポンス payload を serializer 経由で整形する."""
+    serializer = serializer_class(payload)
+    return serializer.data
+
+
+def validate_input(serializer_class, data, *, context=None):
+    """入力データを serializer で検証する."""
+    serializer = serializer_class(data=data, context=context or {})
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
 
 
 class GenerateProblemView(APIView):
@@ -88,29 +114,16 @@ class GenerateProblemView(APIView):
                 message="このAPIはバッチ専用です。直接アクセスできません。"
             )
 
-        min_stock = request.data.get("min_stock", 5)
-
-        if not isinstance(min_stock, int) or min_stock < 1:
-            raise ValidationError(message="min_stock は1以上の整数を指定してください")
+        validated_data = validate_input(GenerateProblemRequestSerializer, request.data)
+        min_stock = validated_data["min_stock"]
 
         # リクエストボディから難易度を取得
-        difficulties_param = request.data.get("difficulties")
-        difficulty_param = request.data.get("difficulty")
+        difficulties_param = validated_data.get("difficulties")
+        difficulty_param = validated_data.get("difficulty")
 
         if difficulties_param is not None:
-            if not isinstance(difficulties_param, list):
-                raise ValidationError(message="difficulties は配列で指定してください")
-            valid_difficulties = ["easy", "medium", "hard"]
-            if not all(d in valid_difficulties for d in difficulties_param):
-                raise ValidationError(
-                    message="difficulties の要素は easy, medium, hard のいずれかを指定してください"
-                )
             difficulties = difficulties_param
         elif difficulty_param is not None:
-            if difficulty_param not in ["easy", "medium", "hard"]:
-                raise ValidationError(
-                    message="difficulty は easy, medium, hard のいずれかを指定してください"
-                )
             difficulties = [difficulty_param]
         else:
             # デフォルト：全難易度を処理
@@ -161,10 +174,13 @@ class GenerateProblemView(APIView):
 
         return Response(
             {
-                "data": {
-                    "results": results,
-                    "total_generated": total_generated,
-                },
+                "data": serialize_data(
+                    GenerateProblemDataSerializer,
+                    {
+                        "results": results,
+                        "total_generated": total_generated,
+                    },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -201,12 +217,11 @@ class GetProblemGroupView(APIView):
         import secrets
         from .models import ProblemGroupAttempt
 
-        difficulty = request.query_params.get("difficulty")
-
-        if not difficulty or difficulty not in ["easy", "medium", "hard"]:
-            raise ValidationError(
-                message="difficulty は easy, medium, hard のいずれかを指定してください"
-            )
+        validated_query = validate_input(
+            ProblemGroupQuerySerializer,
+            request.query_params,
+        )
+        difficulty = validated_query["difficulty"]
 
         if request.user.is_authenticated:
             # 既に問題取得済みかチェック
@@ -222,25 +237,28 @@ class GetProblemGroupView(APIView):
 
                     return Response(
                         {
-                            "data": {
-                                "kind": "persisted",
-                                "problem_group": {
-                                    "problem_group_id": problem_group.problem_group_id,
-                                    "title": problem_group.title,
-                                    "description": problem_group.description,
-                                    "difficulty": problem_group.difficulty,
-                                },
-                                "problems": [
-                                    {
-                                        "problem_id": p.problem_id,
+                            "data": serialize_data(
+                                ProblemGroupFetchDataSerializer,
+                                {
+                                    "kind": "persisted",
+                                    "problem_group": {
                                         "problem_group_id": problem_group.problem_group_id,
-                                        "order_index": p.order_index,
-                                        "problem_type": p.problem_type,
-                                        "problem_body": p.problem_body,
-                                    }
-                                    for p in problems
-                                ],
-                            },
+                                        "title": problem_group.title,
+                                        "description": problem_group.description,
+                                        "difficulty": problem_group.difficulty,
+                                    },
+                                    "problems": [
+                                        {
+                                            "problem_id": p.problem_id,
+                                            "problem_group_id": problem_group.problem_group_id,
+                                            "order_index": p.order_index,
+                                            "problem_type": p.problem_type,
+                                            "problem_body": p.problem_body,
+                                        }
+                                        for p in problems
+                                    ],
+                                },
+                            ),
                             "error": None,
                         },
                         status=status.HTTP_200_OK,
@@ -272,25 +290,28 @@ class GetProblemGroupView(APIView):
 
             return Response(
                 {
-                    "data": {
-                        "kind": "persisted",
-                        "problem_group": {
-                            "problem_group_id": problem_group.problem_group_id,
-                            "title": problem_group.title,
-                            "description": problem_group.description,
-                            "difficulty": problem_group.difficulty,
-                        },
-                        "problems": [
-                            {
-                                "problem_id": p.problem_id,
+                    "data": serialize_data(
+                        ProblemGroupFetchDataSerializer,
+                        {
+                            "kind": "persisted",
+                            "problem_group": {
                                 "problem_group_id": problem_group.problem_group_id,
-                                "order_index": p.order_index,
-                                "problem_type": p.problem_type,
-                                "problem_body": p.problem_body,
-                            }
-                            for p in problems
-                        ],
-                    },
+                                "title": problem_group.title,
+                                "description": problem_group.description,
+                                "difficulty": problem_group.difficulty,
+                            },
+                            "problems": [
+                                {
+                                    "problem_id": p.problem_id,
+                                    "problem_group_id": problem_group.problem_group_id,
+                                    "order_index": p.order_index,
+                                    "problem_type": p.problem_type,
+                                    "problem_body": p.problem_body,
+                                }
+                                for p in problems
+                            ],
+                        },
+                    ),
                     "error": None,
                 },
                 status=status.HTTP_200_OK,
@@ -328,26 +349,29 @@ class GetProblemGroupView(APIView):
 
             return Response(
                 {
-                    "data": {
-                        "kind": "guest",
-                        "guest_token": guest_token,
-                        "problem_group": {
-                            "problem_group_id": problem_group.problem_group_id,
-                            "title": problem_group.title,
-                            "description": problem_group.description,
-                            "difficulty": problem_group.difficulty,
-                        },
-                        "problems": [
-                            {
-                                "problem_id": p.problem_id,
+                    "data": serialize_data(
+                        ProblemGroupFetchDataSerializer,
+                        {
+                            "kind": "guest",
+                            "guest_token": guest_token,
+                            "problem_group": {
                                 "problem_group_id": problem_group.problem_group_id,
-                                "order_index": p.order_index,
-                                "problem_type": p.problem_type,
-                                "problem_body": p.problem_body,
-                            }
-                            for p in problems
-                        ],
-                    },
+                                "title": problem_group.title,
+                                "description": problem_group.description,
+                                "difficulty": problem_group.difficulty,
+                            },
+                            "problems": [
+                                {
+                                    "problem_id": p.problem_id,
+                                    "problem_group_id": problem_group.problem_group_id,
+                                    "order_index": p.order_index,
+                                    "problem_type": p.problem_type,
+                                    "problem_body": p.problem_body,
+                                }
+                                for p in problems
+                            ],
+                        },
+                    ),
                     "error": None,
                 },
                 status=status.HTTP_200_OK,
@@ -405,85 +429,24 @@ class GradeAnswerView(APIView):
                 "error": null
             }
         """
-        problem_group_id = request.data.get("problem_group_id")
-        guest_token = request.data.get("guest_token")
-        answers = request.data.get("answers")
+        validated_data = validate_input(
+            GradeAnswerRequestSerializer,
+            request.data,
+            context={"request": request},
+        )
+        problem_group_id = validated_data.get("problem_group_id")
+        guest_token = validated_data.get("guest_token")
+        answers = validated_data["answers"]
 
-        if not answers or not isinstance(answers, list) or len(answers) == 0:
-            raise ValidationError(message="answers は1件以上の配列である必要があります")
+        if not request.user.is_authenticated and request.session.get("guest_completed"):
+            raise GuestLimitReachedError(
+                message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
+            )
 
-        # XOR入力ルールチェック（problem_group_id と guest_token は排他）
-        is_authenticated = request.user.is_authenticated
-        has_problem_group_id = problem_group_id is not None
-        has_guest_token = guest_token is not None
-
-        if is_authenticated:
-            if not has_problem_group_id:
-                raise ValidationError(
-                    message="ログインユーザーは problem_group_id が必須です"
-                )
-            if has_guest_token:
-                raise ValidationError(
-                    message="ログインユーザーは guest_token を指定できません"
-                )
-
-        else:
-            if has_problem_group_id:
-                raise ValidationError(
-                    message="ゲストユーザーは problem_group_id を指定できません"
-                )
-            if not has_guest_token:
-                raise ValidationError(message="ゲストユーザーは guest_token が必須です")
-
-            if request.session.get("guest_completed"):
-                raise GuestLimitReachedError(
-                    message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
-                )
-
-        self._validate_answers(answers, is_authenticated)
-
-        if is_authenticated:
+        if request.user.is_authenticated:
             return self._handle_authenticated_user(request, problem_group_id, answers)
 
         return self._handle_guest_user(request, guest_token, answers)
-
-    def _validate_answers(self, answers: list, is_authenticated: bool) -> None:
-        """
-        answers 配列の各要素をバリデーションする
-
-        Args:
-            answers: 回答リスト
-            is_authenticated: ログインユーザーかどうか
-
-        Raises:
-            ValidationError: バリデーションエラー
-        """
-        key_field = "problem_id"
-        seen_keys = set()
-
-        for idx, answer in enumerate(answers):
-            answer_body = answer.get("answer_body")
-            if (
-                not answer_body
-                or not isinstance(answer_body, str)
-                or not answer_body.strip()
-            ):
-                raise ValidationError(message=f"answers[{idx}]: answer_body は必須です")
-
-            if len(answer_body) > MAX_ANSWER_BODY_LENGTH:
-                raise ValidationError(
-                    message=f"answers[{idx}]: 回答は{MAX_ANSWER_BODY_LENGTH}文字以下である必要があります"
-                )
-
-            if answer.get("problem_id") is None:
-                raise ValidationError(message=f"answers[{idx}]: problem_id は必須です")
-
-            key_value = answer.get(key_field)
-            if key_value in seen_keys:
-                raise ValidationError(
-                    message=f"answers[{idx}]: {key_field} が重複しています"
-                )
-            seen_keys.add(key_value)
 
     def _handle_authenticated_user(self, request, problem_group_id: int, answers: list):
         """
@@ -601,7 +564,10 @@ class GradeAnswerView(APIView):
 
         return Response(
             {
-                "data": {"results": results},
+                "data": serialize_data(
+                    GradeResponseDataSerializer,
+                    {"results": results},
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -714,7 +680,10 @@ class GradeAnswerView(APIView):
 
         return Response(
             {
-                "data": {"results": results},
+                "data": serialize_data(
+                    GradeResponseDataSerializer,
+                    {"results": results},
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -758,12 +727,22 @@ class CompleteProblemGroupView(APIView):
             request.session.modified = True
 
             return Response(
-                {"data": {"ok": True}, "error": None}, status=status.HTTP_200_OK
+                {
+                    "data": serialize_data(
+                        CompleteProblemGroupDataSerializer,
+                        {"ok": True},
+                    ),
+                    "error": None,
+                },
+                status=status.HTTP_200_OK,
             )
 
-        guest_token = request.data.get("guest_token")
-        if not guest_token:
-            raise ValidationError(message="guest_token は必須です")
+        validated_data = validate_input(
+            CompleteProblemGroupRequestSerializer,
+            request.data,
+            context={"request": request},
+        )
+        guest_token = validated_data.get("guest_token")
 
         session_token = request.session.get("guest_problem_token")
         if not session_token:
@@ -787,7 +766,14 @@ class CompleteProblemGroupView(APIView):
         request.session.modified = True
 
         return Response(
-            {"data": {"ok": True}, "error": None}, status=status.HTTP_200_OK
+            {
+                "data": serialize_data(
+                    CompleteProblemGroupDataSerializer,
+                    {"ok": True},
+                ),
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
         )
 
 
@@ -839,15 +825,14 @@ class MyProblemGroupsView(APIView):
                 message="復習機能を利用するにはログインが必要です"
             )
 
-        difficulty = request.query_params.get("difficulty")
+        validated_query = validate_input(
+            MyProblemGroupsQuerySerializer,
+            request.query_params,
+        )
 
         filters = {}
-
+        difficulty = validated_query.get("difficulty")
         if difficulty:
-            if difficulty not in ["easy", "medium", "hard"]:
-                raise ValidationError(
-                    message="difficulty は easy, medium, hard のいずれかを指定してください"
-                )
             filters["difficulty"] = difficulty
 
         from .models import ProblemGroupAttempt
@@ -863,10 +848,13 @@ class MyProblemGroupsView(APIView):
         if not target_ids:
             return Response(
                 {
-                    "data": {
-                        "items": [],
-                        "next_cursor": None,
-                    },
+                    "data": serialize_data(
+                        MyProblemGroupsDataSerializer,
+                        {
+                            "items": [],
+                            "next_cursor": None,
+                        },
+                    ),
                     "error": None,
                 },
                 status=status.HTTP_200_OK,
@@ -950,10 +938,13 @@ class MyProblemGroupsView(APIView):
 
         return Response(
             {
-                "data": {
-                    "items": items,
-                    "next_cursor": None,
-                },
+                "data": serialize_data(
+                    MyProblemGroupsDataSerializer,
+                    {
+                        "items": items,
+                        "next_cursor": None,
+                    },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -1032,26 +1023,29 @@ class ProblemGroupDetailView(APIView):
 
         return Response(
             {
-                "data": {
-                    "problem_group": {
-                        "problem_group_id": problem_group.problem_group_id,
-                        "title": problem_group.title,
-                        "description": problem_group.description,
-                        "difficulty": problem_group.difficulty,
-                        "created_at": problem_group.created_at.isoformat(),
-                        "completed_at": completed_at,
+                "data": serialize_data(
+                    ProblemGroupDetailDataSerializer,
+                    {
+                        "problem_group": {
+                            "problem_group_id": problem_group.problem_group_id,
+                            "title": problem_group.title,
+                            "description": problem_group.description,
+                            "difficulty": problem_group.difficulty,
+                            "created_at": problem_group.created_at.isoformat(),
+                            "completed_at": completed_at,
+                        },
+                        "problems": [
+                            {
+                                "problem_id": p.problem_id,
+                                "problem_type": p.problem_type,
+                                "order_index": p.order_index,
+                                "problem_body": p.problem_body,
+                            }
+                            for p in problems
+                        ],
+                        "answers": answers_by_problem,
                     },
-                    "problems": [
-                        {
-                            "problem_id": p.problem_id,
-                            "problem_type": p.problem_type,
-                            "order_index": p.order_index,
-                            "problem_body": p.problem_body,
-                        }
-                        for p in problems
-                    ],
-                    "answers": answers_by_problem,
-                },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -1066,9 +1060,6 @@ class RankingView(APIView):
     - 期間（period）とスコア計算方式（score_type）を指定可能
     - 認証不要（誰でも閲覧可能）
     """
-
-    VALID_PERIODS = {"daily", "weekly", "monthly", "all"}
-    VALID_SCORE_TYPES = {"problem_count", "correct_count", "grade_sum"}
 
     def get(self, request):
         """
@@ -1092,28 +1083,13 @@ class RankingView(APIView):
                 "error": null
             }
         """
-        period_str = request.query_params.get("period", "daily")
-        score_type_str = request.query_params.get("score_type", "problem_count")
-        limit_str = request.query_params.get("limit", "5")
-
-        if period_str not in self.VALID_PERIODS:
-            raise ValidationError(
-                message=f"period は {', '.join(self.VALID_PERIODS)} のいずれかを指定してください"
-            )
-
-        if score_type_str not in self.VALID_SCORE_TYPES:
-            raise ValidationError(
-                message=f"score_type は {', '.join(self.VALID_SCORE_TYPES)} のいずれかを指定してください"
-            )
-
-        try:
-            limit = int(limit_str)
-            if limit < 1 or limit > 100:
-                raise ValueError()
-        except ValueError:
-            raise ValidationError(
-                message="limit は 1 から 100 の整数を指定してください"
-            )
+        validated_query = validate_input(
+            RankingQuerySerializer,
+            request.query_params,
+        )
+        period_str = validated_query["period"]
+        score_type_str = validated_query["score_type"]
+        limit = validated_query["limit"]
 
         period = Period(period_str)
         score_type = ScoreType(score_type_str)
@@ -1132,11 +1108,14 @@ class RankingView(APIView):
 
         return Response(
             {
-                "data": {
-                    "period": period_str,
-                    "score_type": score_type_str,
-                    "rankings": rankings_data,
-                },
+                "data": serialize_data(
+                    RankingDataSerializer,
+                    {
+                        "period": period_str,
+                        "score_type": score_type_str,
+                        "rankings": rankings_data,
+                    },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -1287,18 +1266,21 @@ class DashboardView(APIView):
 
         return Response(
             {
-                "data": {
-                    "total_problem_groups": answered_problem_groups,
-                    "total_answers": total_answers,
-                    "average_grade": round(avg_grade, 2),
-                    "grade_distribution": grade_distribution,
-                    "difficulty_stats": difficulty_stats,
-                    "streak": {
-                        "current": current_streak,
-                        "longest": longest_streak,
+                "data": serialize_data(
+                    DashboardDataSerializer,
+                    {
+                        "total_problem_groups": answered_problem_groups,
+                        "total_answers": total_answers,
+                        "average_grade": round(avg_grade, 2),
+                        "grade_distribution": grade_distribution,
+                        "difficulty_stats": difficulty_stats,
+                        "streak": {
+                            "current": current_streak,
+                            "longest": longest_streak,
+                        },
+                        "activity_calendar": activity_calendar,
                     },
-                    "activity_calendar": activity_calendar,
-                },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
