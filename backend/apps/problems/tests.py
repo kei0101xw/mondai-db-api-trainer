@@ -139,6 +139,18 @@ class RequirementQuestionApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.data["error"]["code"], "UNAUTHORIZED")
 
+    def test_requirement_question_requires_problem_group_in_progress(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/v1/problem-groups/{self.problem_group.problem_group_id}/requirements/questions",
+            {"question": "質問です"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["error"]["code"], "PERMISSION_DENIED")
+
 
 class GradeAnswerApiTests(APITestCase):
     def setUp(self):

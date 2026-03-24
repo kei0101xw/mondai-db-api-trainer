@@ -410,6 +410,12 @@ class RequirementQuestionView(APIView):
             request.data,
         )
 
+        current_pg_id = request.session.get("current_problem_group_id")
+        if current_pg_id != problem_group_id:
+            raise PermissionDeniedError(
+                message="この題材は現在のセッションで進行中ではありません"
+            )
+
         try:
             problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
         except ProblemGroup.DoesNotExist:
