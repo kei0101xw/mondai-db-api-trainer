@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.problems.models import (
+    PersonalizedModelAnswer,
     Problem,
     ProblemGroup,
     RequirementItem,
@@ -240,3 +241,107 @@ class GradeAnswerApiTests(APITestCase):
             problems_with_answers[0]["problem_body"],
         )
         self.assertIn("## 追加要件", problems_with_answers[1]["problem_body"])
+
+    @patch("apps.problems.views.AnswerGrader")
+    def test_grade_saves_personalized_model_answers_with_incrementing_versions(
+        self, grader_class
+    ):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["current_problem_group_id"] = self.problem_group.problem_group_id
+        session.save()
+
+        turn_log = RequirementTurnLog.objects.create(
+            problem_group=self.problem_group,
+            user=self.user,
+            user_question="投稿削除はどうしますか？",
+            ai_answer="投稿は論理削除とします。",
+            turn_no=1,
+        )
+        RequirementItem.objects.create(
+            requirement_turn_log=turn_log,
+            problem_group=self.problem_group,
+            user=self.user,
+            subject="posts",
+            predicate="delete_policy",
+            object_value="soft_delete",
+            detail_text="投稿は論理削除とする",
+        )
+
+        PersonalizedModelAnswer.objects.create(
+            problem=self.db_problem,
+            problem_group=self.problem_group,
+            user=self.user,
+            version=1,
+            model_answer="old personalized answer",
+        )
+
+        grader = Mock()
+        grader.grade_batch.return_value = [
+            {
+                "order_index": 1,
+                "grade": 2,
+                "model_answer": "CREATE TABLE posts (deleted_at timestamp null);",
+                "explanation": "良いです。",
+            },
+            {
+                "order_index": 2,
+                "grade": 2,
+                "model_answer": "DELETE ではなく論理削除 API を設計する",
+                "explanation": "良いです。",
+            },
+        ]
+        grader_class.return_value = grader
+
+        response = self.client.post(
+            "/api/v1/grade",
+            {
+                "problem_group_id": self.problem_group.problem_group_id,
+                "answers": [
+                    {
+                        "problem_id": self.db_problem.problem_id,
+                        "answer_body": "CREATE TABLE posts (...);",
+                    },
+                    {
+                        "problem_id": self.api_problem.problem_id,
+                        "answer_body": "def delete_post(...): ...",
+                    },
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        db_personalized_answers = PersonalizedModelAnswer.objects.filter(
+            problem=self.db_problem,
+            problem_group=self.problem_group,
+            user=self.user,
+        ).order_by("version")
+        api_personalized_answers = PersonalizedModelAnswer.objects.filter(
+            problem=self.api_problem,
+            problem_group=self.problem_group,
+            user=self.user,
+        ).order_by("version")
+
+        self.assertEqual(db_personalized_answers.count(), 2)
+        self.assertEqual(db_personalized_answers.last().version, 2)
+        self.assertEqual(
+            db_personalized_answers.last().model_answer,
+            "CREATE TABLE posts (deleted_at timestamp null);",
+        )
+        self.assertEqual(api_personalized_answers.count(), 1)
+        self.assertEqual(api_personalized_answers.first().version, 1)
+        self.assertEqual(
+            api_personalized_answers.first().model_answer,
+            "DELETE ではなく論理削除 API を設計する",
+        )
+
+        self.assertEqual(
+            response.data["data"]["results"][0]["model_answer"]["version"],
+            2,
+        )
+        self.assertEqual(
+            response.data["data"]["results"][0]["model_answer"]["model_answer"],
+            "CREATE TABLE posts (deleted_at timestamp null);",
+        )

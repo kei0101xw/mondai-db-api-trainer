@@ -4,6 +4,7 @@
 
 import secrets
 from django.db import transaction
+from django.db.models import Max
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -35,6 +36,7 @@ from .models import (
     Answer,
     Explanation,
     ModelAnswer,
+    PersonalizedModelAnswer,
     RequirementItem,
     RequirementTurnLog,
 )
@@ -554,6 +556,32 @@ class GradeAnswerView(APIView):
         """問題文と追加要件を結合し、採点AIへ渡す本文を組み立てる."""
         return problem.problem_body + cls._build_requirement_section(requirement_items)
 
+    @staticmethod
+    def _save_personalized_model_answer(
+        *,
+        problem: Problem,
+        problem_group: ProblemGroup,
+        user,
+        model_answer: str,
+    ) -> PersonalizedModelAnswer:
+        """採点時に生成された個別模範解答を version 管理で保存する."""
+        next_version = (
+            PersonalizedModelAnswer.objects.filter(
+                problem=problem,
+                problem_group=problem_group,
+                user=user,
+            ).aggregate(max_version=Max("version"))["max_version"]
+            or 0
+        ) + 1
+
+        return PersonalizedModelAnswer.objects.create(
+            problem=problem,
+            problem_group=problem_group,
+            user=user,
+            version=next_version,
+            model_answer=model_answer,
+        )
+
     def post(self, request):
         """
         回答を一括採点する
@@ -708,7 +736,19 @@ class GradeAnswerView(APIView):
                     explanation_body=grading_result["explanation"],
                 )
 
-                model_answer_obj = latest_model_answer_map.get(problem.problem_id)
+                personalized_model_answer = None
+                if requirement_items:
+                    personalized_model_answer = self._save_personalized_model_answer(
+                        problem=problem,
+                        problem_group=problem_group,
+                        user=request.user,
+                        model_answer=grading_result["model_answer"],
+                    )
+
+                model_answer_obj = (
+                    personalized_model_answer
+                    or latest_model_answer_map.get(problem.problem_id)
+                )
                 results.append(
                     {
                         "problem_ref": {
