@@ -5,10 +5,13 @@ from .models import (
     Explanation,
     FavoriteProblemGroup,
     ModelAnswer,
+    PersonalizedModelAnswer,
     Problem,
     ProblemGroup,
     ProblemGroupAttempt,
     ProblemGroupEvaluation,
+    RequirementItem,
+    RequirementTurnLog,
 )
 
 
@@ -114,6 +117,90 @@ class ModelAnswerAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {"fields": ("problem", "version")}),
         ("模範解答", {"fields": ("model_answer",)}),
+        ("日時", {"fields": ("created_at", "updated_at")}),
+    )
+
+
+@admin.register(PersonalizedModelAnswer)
+class PersonalizedModelAnswerAdmin(admin.ModelAdmin):
+    """PersonalizedModelAnswer用のAdmin設定."""
+
+    list_display = [
+        "id",
+        "user",
+        "problem_group",
+        "problem",
+        "version",
+        "created_at",
+    ]
+    list_filter = ["version", "created_at", "problem_group"]
+    search_fields = ["model_answer", "user__email", "user__name"]
+    readonly_fields = ["created_at", "updated_at"]
+    ordering = ["problem", "user", "version"]
+
+    fieldsets = (
+        (None, {"fields": ("user", "problem_group", "problem", "version")}),
+        ("模範解答", {"fields": ("model_answer",)}),
+        ("日時", {"fields": ("created_at", "updated_at")}),
+    )
+
+
+@admin.register(RequirementTurnLog)
+class RequirementTurnLogAdmin(admin.ModelAdmin):
+    """RequirementTurnLog用のAdmin設定."""
+
+    list_display = [
+        "id",
+        "user",
+        "problem_group",
+        "turn_no",
+        "created_at",
+    ]
+    list_filter = ["created_at", "problem_group"]
+    search_fields = ["user_question", "ai_answer", "user__email", "user__name"]
+    readonly_fields = ["created_at", "updated_at"]
+    ordering = ["problem_group", "user", "turn_no"]
+
+    fieldsets = (
+        (None, {"fields": ("user", "problem_group", "turn_no")}),
+        ("質問", {"fields": ("user_question",)}),
+        ("AI回答", {"fields": ("ai_answer",)}),
+        ("日時", {"fields": ("created_at", "updated_at")}),
+    )
+
+
+@admin.register(RequirementItem)
+class RequirementItemAdmin(admin.ModelAdmin):
+    """RequirementItem用のAdmin設定."""
+
+    list_display = [
+        "id",
+        "user",
+        "problem_group",
+        "requirement_turn_log",
+        "subject",
+        "predicate",
+        "object_value",
+        "created_at",
+    ]
+    list_filter = ["created_at", "problem_group", "subject", "predicate"]
+    search_fields = [
+        "detail_text",
+        "subject",
+        "predicate",
+        "object_value",
+        "user__email",
+        "user__name",
+    ]
+    readonly_fields = ["created_at", "updated_at"]
+    ordering = ["problem_group", "user", "requirement_turn_log", "id"]
+
+    fieldsets = (
+        (None, {"fields": ("user", "problem_group", "requirement_turn_log")}),
+        (
+            "構造化要件",
+            {"fields": ("subject", "predicate", "object_value", "detail_text")},
+        ),
         ("日時", {"fields": ("created_at", "updated_at")}),
     )
 
