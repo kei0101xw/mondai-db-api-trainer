@@ -1,18 +1,20 @@
 import json
 import unicodedata
-from typing import Any, TypedDict, Optional, List, Tuple, Dict
-from django.contrib.auth import get_user_model
+from typing import TYPE_CHECKING, Any, TypedDict, Optional, List, Tuple, Dict
+from django.db.models import Max
 from django.db import transaction
 
 from common.ai.gemini_client import GeminiClient, GeminiClientError
-from .models import ProblemGroup, Problem
+from .models import ProblemGroup, Problem, RequirementItem, RequirementTurnLog
 from .prompts import (
     build_problem_generation_prompt,
     build_grading_prompt,
     build_batch_grading_prompt,
+    build_requirement_clarification_prompt,
 )
 
-User = get_user_model()
+if TYPE_CHECKING:
+    from apps.auth.models import User
 
 
 def _fix_unescaped_newlines(json_str: str) -> str:
@@ -56,6 +58,22 @@ class BatchGradingResult(TypedDict):
     explanation: str
 
 
+class RequirementItemData(TypedDict):
+    """構造化された追加要件のデータ構造"""
+
+    subject: str
+    predicate: str
+    object_value: str
+    detail_text: str
+
+
+class RequirementClarificationResult(TypedDict):
+    """要件問い合わせ結果のデータ構造"""
+
+    ai_answer: str
+    requirement_items: List[RequirementItemData]
+
+
 class ProblemGeneratorError(Exception):
     """問題生成エラー"""
 
@@ -64,6 +82,12 @@ class ProblemGeneratorError(Exception):
 
 class AnswerGraderError(Exception):
     """採点エラー"""
+
+    pass
+
+
+class RequirementClarifierError(Exception):
+    """要件明確化エラー"""
 
     pass
 
@@ -572,3 +596,175 @@ class AnswerGrader:
             raise AnswerGraderError(
                 f"order_index {result['order_index']}: grade は 0, 1, 2 のいずれかである必要があります（実際: {result['grade']}）"
             )
+
+
+class RequirementClarifier:
+    """Gemini API を使って要件問い合わせに回答し、追加要件を抽出する."""
+
+    def __init__(self, gemini_client: Optional[GeminiClient] = None):
+        self.gemini_client = gemini_client or GeminiClient()
+
+    def clarify(
+        self,
+        *,
+        problem_group: ProblemGroup,
+        user: "User",
+        question: str,
+    ) -> tuple[RequirementTurnLog, list[RequirementItem]]:
+        problems = list(problem_group.problems.all().order_by("order_index"))
+        prior_turn_logs = list(
+            RequirementTurnLog.objects.filter(
+                problem_group=problem_group,
+                user=user,
+            ).order_by("turn_no")
+        )
+        prior_requirement_items = list(
+            RequirementItem.objects.filter(
+                problem_group=problem_group,
+                user=user,
+            ).order_by("id")
+        )
+
+        prompt = build_requirement_clarification_prompt(
+            title=problem_group.title,
+            description=problem_group.description,
+            problems=[
+                {
+                    "order_index": problem.order_index,
+                    "problem_type": problem.problem_type,
+                    "problem_body": problem.problem_body,
+                }
+                for problem in problems
+            ],
+            prior_turn_logs=[
+                {
+                    "turn_no": turn.turn_no,
+                    "user_question": turn.user_question,
+                    "ai_answer": turn.ai_answer,
+                }
+                for turn in prior_turn_logs
+            ],
+            prior_requirement_items=[
+                {
+                    "subject": item.subject,
+                    "predicate": item.predicate,
+                    "object_value": item.object_value,
+                    "detail_text": item.detail_text,
+                }
+                for item in prior_requirement_items
+            ],
+            question=question,
+        )
+
+        try:
+            response_text = self.gemini_client.generate_content(
+                prompt=prompt,
+                temperature=0.2,
+                max_output_tokens=8192,
+                response_format="application/json",
+                timeout=90,
+            )
+        except GeminiClientError as e:
+            raise RequirementClarifierError(f"Gemini API呼び出しエラー: {e}") from e
+
+        try:
+            json_str = self._extract_json_from_response(response_text)
+            clarification_result: RequirementClarificationResult = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise RequirementClarifierError(f"JSONパースエラー: {e}") from e
+        except ValueError as e:
+            debug_snippet = (
+                response_text[:500] if len(response_text) > 500 else response_text
+            )
+            raise RequirementClarifierError(
+                f"JSON抽出エラー: {e}\nレスポンス先頭: {debug_snippet}"
+            ) from e
+
+        self._validate_clarification_result(clarification_result)
+
+        return self._save_to_db(
+            problem_group=problem_group,
+            user=user,
+            question=question,
+            clarification_result=clarification_result,
+        )
+
+    @staticmethod
+    def _extract_json_from_response(response_text: str) -> str:
+        text = response_text.strip()
+        if text.startswith("```") and text.rstrip().endswith("```"):
+            first_newline = text.find("\n")
+            if first_newline != -1:
+                text = text[first_newline + 1 :]
+            text = text.rsplit("```", 1)[0].strip()
+        return text
+
+    def _validate_clarification_result(
+        self, result: RequirementClarificationResult
+    ) -> None:
+        if not isinstance(result, dict):
+            raise RequirementClarifierError(
+                f"要件問い合わせ結果がオブジェクトではありません（型: {type(result).__name__}）"
+            )
+
+        ai_answer = result.get("ai_answer")
+        if not isinstance(ai_answer, str) or not ai_answer.strip():
+            raise RequirementClarifierError("ai_answer が含まれていません")
+
+        requirement_items = result.get("requirement_items")
+        if not isinstance(requirement_items, list):
+            raise RequirementClarifierError("requirement_items が配列ではありません")
+
+        for idx, item in enumerate(requirement_items, start=1):
+            if not isinstance(item, dict):
+                raise RequirementClarifierError(
+                    f"requirement_items[{idx}] がオブジェクトではありません"
+                )
+            for field_name in ("subject", "predicate", "object_value", "detail_text"):
+                field_value = item.get(field_name)
+                if not isinstance(field_value, str) or not field_value.strip():
+                    raise RequirementClarifierError(
+                        f"requirement_items[{idx}].{field_name} が含まれていません"
+                    )
+
+    @transaction.atomic
+    def _save_to_db(
+        self,
+        *,
+        problem_group: ProblemGroup,
+        user: "User",
+        question: str,
+        clarification_result: RequirementClarificationResult,
+    ) -> tuple[RequirementTurnLog, list[RequirementItem]]:
+        next_turn_no = (
+            RequirementTurnLog.objects.filter(problem_group=problem_group, user=user)
+            .aggregate(max_turn_no=Max("turn_no"))
+            .get("max_turn_no")
+            or 0
+        ) + 1
+
+        turn_log = RequirementTurnLog.objects.create(
+            problem_group=problem_group,
+            user=user,
+            user_question=question,
+            ai_answer=clarification_result["ai_answer"].strip(),
+            turn_no=next_turn_no,
+        )
+
+        requirement_items = [
+            RequirementItem(
+                requirement_turn_log=turn_log,
+                problem_group=problem_group,
+                user=user,
+                subject=item["subject"].strip(),
+                predicate=item["predicate"].strip(),
+                object_value=item["object_value"].strip(),
+                detail_text=item["detail_text"].strip(),
+            )
+            for item in clarification_result["requirement_items"]
+        ]
+
+        if requirement_items:
+            RequirementItem.objects.bulk_create(requirement_items)
+
+        return turn_log, list(turn_log.requirement_items.order_by("id"))

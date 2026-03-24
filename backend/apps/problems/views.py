@@ -5,6 +5,7 @@
 import secrets
 from django.db import transaction
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,6 +17,7 @@ from common.exceptions import (
     PermissionDeniedError,
     NotFoundError,
     GradingError,
+    RequirementClarificationError,
 )
 from common.error_codes import ErrorCode
 
@@ -24,8 +26,18 @@ from .services import (
     ProblemGeneratorError,
     AnswerGrader,
     AnswerGraderError,
+    RequirementClarifier,
+    RequirementClarifierError,
 )
-from .models import ProblemGroup, Problem, Answer, Explanation, ModelAnswer
+from .models import (
+    ProblemGroup,
+    Problem,
+    Answer,
+    Explanation,
+    ModelAnswer,
+    RequirementItem,
+    RequirementTurnLog,
+)
 from .ranking_service import get_ranking, Period, ScoreType
 from .serializers import (
     CompleteProblemGroupDataSerializer,
@@ -40,6 +52,9 @@ from .serializers import (
     ProblemGroupDetailDataSerializer,
     ProblemGroupFetchDataSerializer,
     ProblemGroupQuerySerializer,
+    RequirementListDataSerializer,
+    RequirementQuestionDataSerializer,
+    RequirementQuestionRequestSerializer,
     RankingQuerySerializer,
     RankingDataSerializer,
 )
@@ -376,6 +391,131 @@ class GetProblemGroupView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
+
+
+class RequirementQuestionView(APIView):
+    """
+    POST /api/v1/problem-groups/{problem_group_id}/requirements/questions
+
+    要件明確化の問い合わせを受け付け、原文ログと構造化データを保存する。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, problem_group_id: int):
+        validated_data = validate_input(
+            RequirementQuestionRequestSerializer,
+            request.data,
+        )
+
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_GROUP_NOT_FOUND,
+                message=f"問題グループID {problem_group_id} が見つかりません",
+            )
+
+        try:
+            clarifier = RequirementClarifier()
+            turn_log, requirement_items = clarifier.clarify(
+                problem_group=problem_group,
+                user=request.user,
+                question=validated_data["question"],
+            )
+        except RequirementClarifierError as e:
+            raise RequirementClarificationError(message=str(e))
+
+        return Response(
+            {
+                "data": serialize_data(
+                    RequirementQuestionDataSerializer,
+                    {
+                        "turn": {
+                            "id": turn_log.id,
+                            "turn_no": turn_log.turn_no,
+                            "user_question": turn_log.user_question,
+                            "ai_answer": turn_log.ai_answer,
+                        },
+                        "requirement_items": [
+                            {
+                                "id": item.id,
+                                "subject": item.subject,
+                                "predicate": item.predicate,
+                                "object_value": item.object_value,
+                                "detail_text": item.detail_text,
+                            }
+                            for item in requirement_items
+                        ],
+                    },
+                ),
+                "error": None,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class RequirementListView(APIView):
+    """
+    GET /api/v1/problem-groups/{problem_group_id}/requirements
+
+    指定題材に対するログインユーザーの要件問い合わせ履歴を返す。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, problem_group_id: int):
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_GROUP_NOT_FOUND,
+                message=f"問題グループID {problem_group_id} が見つかりません",
+            )
+
+        turn_logs = list(
+            RequirementTurnLog.objects.filter(
+                problem_group=problem_group,
+                user=request.user,
+            ).order_by("turn_no")
+        )
+        requirement_items = list(
+            RequirementItem.objects.filter(
+                problem_group=problem_group,
+                user=request.user,
+            ).order_by("id")
+        )
+
+        return Response(
+            {
+                "data": serialize_data(
+                    RequirementListDataSerializer,
+                    {
+                        "turn_logs": [
+                            {
+                                "id": turn.id,
+                                "turn_no": turn.turn_no,
+                                "user_question": turn.user_question,
+                                "ai_answer": turn.ai_answer,
+                            }
+                            for turn in turn_logs
+                        ],
+                        "requirement_items": [
+                            {
+                                "id": item.id,
+                                "subject": item.subject,
+                                "predicate": item.predicate,
+                                "object_value": item.object_value,
+                                "detail_text": item.detail_text,
+                            }
+                            for item in requirement_items
+                        ],
+                    },
+                ),
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class GradeAnswerView(APIView):

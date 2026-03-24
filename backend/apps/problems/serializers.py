@@ -4,6 +4,7 @@ VALID_DIFFICULTIES = {"easy", "medium", "hard"}
 VALID_PERIODS = {"daily", "weekly", "monthly", "all"}
 VALID_SCORE_TYPES = {"problem_count", "correct_count", "grade_sum"}
 MAX_ANSWER_BODY_LENGTH = 50000
+MAX_REQUIREMENT_QUESTION_LENGTH = 5000
 
 
 class GenerateProblemRequestSerializer(serializers.Serializer):
@@ -29,7 +30,9 @@ class GenerateProblemRequestSerializer(serializers.Serializer):
     def validate_difficulties(self, value):
         if not isinstance(value, list):
             raise serializers.ValidationError("difficulties は配列で指定してください")
-        if not all(isinstance(item, str) and item in VALID_DIFFICULTIES for item in value):
+        if not all(
+            isinstance(item, str) and item in VALID_DIFFICULTIES for item in value
+        ):
             raise serializers.ValidationError(
                 "difficulties の要素は easy, medium, hard のいずれかを指定してください"
             )
@@ -155,6 +158,54 @@ class CompleteProblemGroupRequestSerializer(serializers.Serializer):
         if not request.user.is_authenticated and not attrs.get("guest_token"):
             raise serializers.ValidationError("guest_token は必須です")
         return attrs
+
+
+class RequirementQuestionRequestSerializer(serializers.Serializer):
+    """要件問い合わせ API の入力."""
+
+    question = serializers.CharField(
+        required=True,
+        max_length=MAX_REQUIREMENT_QUESTION_LENGTH,
+        trim_whitespace=True,
+        error_messages={
+            "required": "question は必須です",
+            "blank": "question は必須です",
+            "max_length": f"question は {MAX_REQUIREMENT_QUESTION_LENGTH} 文字以下で入力してください",
+        },
+    )
+
+
+class RequirementTurnSerializer(serializers.Serializer):
+    """要件問い合わせの1ターン."""
+
+    id = serializers.IntegerField()
+    turn_no = serializers.IntegerField()
+    user_question = serializers.CharField()
+    ai_answer = serializers.CharField()
+
+
+class RequirementItemSerializer(serializers.Serializer):
+    """構造化された追加要件."""
+
+    id = serializers.IntegerField()
+    subject = serializers.CharField()
+    predicate = serializers.CharField()
+    object_value = serializers.CharField()
+    detail_text = serializers.CharField()
+
+
+class RequirementQuestionDataSerializer(serializers.Serializer):
+    """要件問い合わせレスポンスの data 部分."""
+
+    turn = RequirementTurnSerializer()
+    requirement_items = RequirementItemSerializer(many=True)
+
+
+class RequirementListDataSerializer(serializers.Serializer):
+    """要件一覧レスポンスの data 部分."""
+
+    turn_logs = RequirementTurnSerializer(many=True)
+    requirement_items = RequirementItemSerializer(many=True)
 
 
 class MyProblemGroupsQuerySerializer(serializers.Serializer):

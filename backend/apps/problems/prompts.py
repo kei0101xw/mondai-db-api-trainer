@@ -398,3 +398,107 @@ def build_batch_grading_prompt(problems_with_answers: list[dict]) -> str:
 """
 
     return prompt
+
+
+def build_requirement_clarification_prompt(
+    *,
+    title: str,
+    description: str,
+    problems: list[dict],
+    prior_turn_logs: list[dict],
+    prior_requirement_items: list[dict],
+    question: str,
+) -> str:
+    """要件明確化の問い合わせ用プロンプトを構築する."""
+
+    problems_section = "\n\n".join(
+        [
+            (
+                f"## 小問 {problem['order_index']} ({problem['problem_type']})\n"
+                f"{problem['problem_body']}"
+            )
+            for problem in problems
+        ]
+    )
+
+    if prior_turn_logs:
+        turn_logs_section = "\n\n".join(
+            [
+                (
+                    f"### turn {turn['turn_no']}\n"
+                    f"- 質問: {turn['user_question']}\n"
+                    f"- 回答: {turn['ai_answer']}"
+                )
+                for turn in prior_turn_logs
+            ]
+        )
+    else:
+        turn_logs_section = "なし"
+
+    if prior_requirement_items:
+        requirement_items_section = "\n".join(
+            [
+                (
+                    f"- subject={item['subject']}, "
+                    f"predicate={item['predicate']}, "
+                    f"object_value={item['object_value']}, "
+                    f"detail_text={item['detail_text']}"
+                )
+                for item in prior_requirement_items
+            ]
+        )
+    else:
+        requirement_items_section = "なし"
+
+    return f"""あなたはバックエンド設計課題の出題者です。
+受講者が設計を進めるために、曖昧な要件を明確化する質問へ回答してください。
+
+必ず日本語で回答してください。
+
+# 題材
+- タイトル: {title}
+- 概要:
+{description}
+
+# 出題されている小問
+{problems_section}
+
+# これまでの質疑応答
+{turn_logs_section}
+
+# これまでに確定した追加要件
+{requirement_items_section}
+
+# 今回の質問
+{question}
+
+# 回答方針
+- 問題文・過去の質疑応答・既存の追加要件と矛盾しないように回答してください
+- 情報が足りない場合は、設計問題として自然な前提を1つに定めて明確に回答してください
+- 回答文は受講者がそのまま設計に反映できる具体性にしてください
+- 今回のやり取りで新たに確定した追加要件だけを requirement_items に含めてください
+- 追加要件が新たに確定しない場合、requirement_items は空配列にしてください
+
+# 出力形式
+必ず以下の JSON 形式のみで出力してください。説明文やコードフェンスは不要です。
+
+```json
+{{
+  "ai_answer": "質問に対する自然な日本語の回答",
+  "requirement_items": [
+    {{
+      "subject": "posts",
+      "predicate": "delete_policy",
+      "object_value": "soft_delete",
+      "detail_text": "投稿は論理削除とし、公開一覧には表示しない"
+    }}
+  ]
+}}
+```
+
+# 注意事項
+- ai_answer は必須です
+- requirement_items の各要素には subject, predicate, object_value, detail_text を必ず含めてください
+- requirement_items は今回新たに確定した内容のみを入れてください
+- 同じ意味の requirement_items を重複して出力しないでください
+"""
