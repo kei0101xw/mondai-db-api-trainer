@@ -137,3 +137,106 @@ class RequirementQuestionApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.data["error"]["code"], "UNAUTHORIZED")
+
+
+class GradeAnswerApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="grader@example.com",
+            name="grader",
+            password="password123",
+        )
+        self.problem_group = ProblemGroup.objects.create(
+            title="SNSアプリ",
+            description="投稿、コメント、フォローができるSNSアプリです。",
+            difficulty=ProblemGroup.Difficulty.EASY,
+        )
+        self.db_problem = Problem.objects.create(
+            problem_group=self.problem_group,
+            problem_type=Problem.ProblemType.DB,
+            order_index=1,
+            problem_body="DB設計を行ってください。",
+        )
+        self.api_problem = Problem.objects.create(
+            problem_group=self.problem_group,
+            problem_type=Problem.ProblemType.API,
+            order_index=2,
+            problem_body="API設計を行ってください。",
+        )
+
+    @patch("apps.problems.views.AnswerGrader")
+    def test_grade_appends_requirement_items_to_problem_body_for_authenticated_user(
+        self, grader_class
+    ):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["current_problem_group_id"] = self.problem_group.problem_group_id
+        session.save()
+
+        turn_log = RequirementTurnLog.objects.create(
+            problem_group=self.problem_group,
+            user=self.user,
+            user_question="退会したユーザーの投稿はどう扱いますか？",
+            ai_answer="投稿は論理削除とし、公開一覧には表示しません。",
+            turn_no=1,
+        )
+        RequirementItem.objects.create(
+            requirement_turn_log=turn_log,
+            problem_group=self.problem_group,
+            user=self.user,
+            subject="posts",
+            predicate="delete_policy",
+            object_value="soft_delete",
+            detail_text="投稿は論理削除とし、公開一覧には表示しない",
+        )
+
+        grader = Mock()
+        grader.grade_batch.return_value = [
+            {
+                "order_index": 1,
+                "grade": 2,
+                "model_answer": "CREATE TABLE posts (...);",
+                "explanation": "よくできています。",
+            },
+            {
+                "order_index": 2,
+                "grade": 1,
+                "model_answer": "POST /posts",
+                "explanation": "概ね良いです。",
+            },
+        ]
+        grader_class.return_value = grader
+
+        response = self.client.post(
+            "/api/v1/grade",
+            {
+                "problem_group_id": self.problem_group.problem_group_id,
+                "answers": [
+                    {
+                        "problem_id": self.db_problem.problem_id,
+                        "answer_body": "CREATE TABLE posts (...);",
+                    },
+                    {
+                        "problem_id": self.api_problem.problem_id,
+                        "answer_body": "def create_post(...): ...",
+                    },
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        grader.grade_batch.assert_called_once()
+
+        problems_with_answers = grader.grade_batch.call_args.args[0]
+        self.assertEqual(len(problems_with_answers), 2)
+        self.assertIn("## 追加要件", problems_with_answers[0]["problem_body"])
+        self.assertIn(
+            "投稿は論理削除とし、公開一覧には表示しない",
+            problems_with_answers[0]["problem_body"],
+        )
+        self.assertIn(
+            "subject=posts, predicate=delete_policy, object_value=soft_delete",
+            problems_with_answers[0]["problem_body"],
+        )
+        self.assertIn("## 追加要件", problems_with_answers[1]["problem_body"])

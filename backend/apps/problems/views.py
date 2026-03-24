@@ -529,6 +529,31 @@ class GradeAnswerView(APIView):
 
     GRADE_DISPLAY_MAP = {0: "×", 1: "△", 2: "○"}
 
+    @staticmethod
+    def _build_requirement_section(requirement_items: list[RequirementItem]) -> str:
+        """採点用に追加要件セクションを組み立てる."""
+        if not requirement_items:
+            return ""
+
+        requirement_lines = []
+        for item in requirement_items:
+            requirement_lines.append(
+                (
+                    f"- {item.detail_text} "
+                    f"(subject={item.subject}, predicate={item.predicate}, "
+                    f"object_value={item.object_value})"
+                )
+            )
+
+        return "\n\n## 追加要件\n" + "\n".join(requirement_lines)
+
+    @classmethod
+    def _build_grading_problem_body(
+        cls, problem: Problem, requirement_items: list[RequirementItem]
+    ) -> str:
+        """問題文と追加要件を結合し、採点AIへ渡す本文を組み立てる."""
+        return problem.problem_body + cls._build_requirement_section(requirement_items)
+
     def post(self, request):
         """
         回答を一括採点する
@@ -617,6 +642,12 @@ class GradeAnswerView(APIView):
         problems = list(
             Problem.objects.filter(problem_group=problem_group).order_by("order_index")
         )
+        requirement_items = list(
+            RequirementItem.objects.filter(
+                problem_group=problem_group,
+                user=request.user,
+            ).order_by("id")
+        )
 
         problem_map = {p.problem_id: p for p in problems}
 
@@ -641,7 +672,10 @@ class GradeAnswerView(APIView):
                 {
                     "order_index": problem.order_index,
                     "problem_type": problem.problem_type,
-                    "problem_body": problem.problem_body,
+                    "problem_body": self._build_grading_problem_body(
+                        problem,
+                        requirement_items,
+                    ),
                     "answer_body": answer["answer_body"],
                     "problem_id": problem.problem_id,
                 }
