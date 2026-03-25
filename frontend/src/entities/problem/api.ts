@@ -8,6 +8,9 @@ import type {
   MyProblemGroupsResponse,
   ProblemGroupDetailResponse,
   DashboardData,
+  RequirementListResponse,
+  RequirementQuestionRequest,
+  RequirementQuestionResponse,
 } from './types';
 
 export const generateProblem = async (
@@ -70,6 +73,24 @@ export const completeProblemGroup = async (
 ) => {
   const response = await apiClient.post<{ ok: boolean }>(
     `/problem-groups/${problemGroupId}/complete`,
+    payload,
+  );
+  return response;
+};
+
+export const getRequirements = async (problemGroupId: number): Promise<RequirementListResponse> => {
+  const response = await apiClient.get<RequirementListResponse>(
+    `/problem-groups/${problemGroupId}/requirements`,
+  );
+  return response;
+};
+
+export const askRequirementQuestion = async (
+  problemGroupId: number,
+  payload: RequirementQuestionRequest,
+): Promise<RequirementQuestionResponse> => {
+  const response = await apiClient.post<RequirementQuestionResponse>(
+    `/problem-groups/${problemGroupId}/requirements/questions`,
     payload,
   );
   return response;
