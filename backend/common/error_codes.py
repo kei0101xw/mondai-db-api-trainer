@@ -63,6 +63,7 @@ class ErrorCode(str, Enum):
     AI_GRADING_FAILED = "AI_GRADING_FAILED"
     GENERATION_ERROR = "GENERATION_ERROR"
     GRADING_ERROR = "GRADING_ERROR"
+    REQUIREMENT_CLARIFICATION_ERROR = "REQUIREMENT_CLARIFICATION_ERROR"
     PERMISSION_DENIED = "PERMISSION_DENIED"
 
     # ========================================
@@ -113,6 +114,7 @@ ERROR_MESSAGES = {
     ErrorCode.AI_GRADING_FAILED: "採点処理に失敗しました",
     ErrorCode.GENERATION_ERROR: "生成処理でエラーが発生しました",
     ErrorCode.GRADING_ERROR: "採点処理でエラーが発生しました",
+    ErrorCode.REQUIREMENT_CLARIFICATION_ERROR: "要件問い合わせ処理でエラーが発生しました",
     ErrorCode.PERMISSION_DENIED: "この操作を実行する権限がありません",
     # CSRF/セキュリティエラー
     ErrorCode.CSRF_TOKEN_MISSING: "CSRFトークンが見つかりません",

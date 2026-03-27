@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { generateProblem, gradeAnswers } from '../../entities/problem/api';
-import type { GenerateProblemResponse } from '../../entities/problem/types';
+import {
+  askRequirementQuestion,
+  generateProblem,
+  getRequirements,
+  gradeAnswers,
+} from '../../entities/problem/api';
+import type {
+  GenerateProblemResponse,
+  RequirementItem,
+  RequirementTurn,
+} from '../../entities/problem/types';
 import { useAuth } from '../../contexts';
 import { CodeEditor } from '../../components/CodeEditor/CodeEditor';
 import { FullScreenLoader } from '../../shared/ui/Loading';
@@ -18,6 +27,8 @@ interface RetryLocationState {
   retryProblemGroupId?: number;
   problemData?: GenerateProblemResponse;
 }
+
+type SolveTab = 'problems' | 'inquiry' | 'requirements';
 
 const Solve = () => {
   const [searchParams] = useSearchParams();
@@ -36,6 +47,13 @@ const Solve = () => {
   const [answers, setAnswers] = useState<{ [key: number]: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [activeTab, setActiveTab] = useState<SolveTab>('problems');
+  const [requirementQuestion, setRequirementQuestion] = useState('');
+  const [requirementTurns, setRequirementTurns] = useState<RequirementTurn[]>([]);
+  const [requirementItems, setRequirementItems] = useState<RequirementItem[]>([]);
+  const [requirementsLoading, setRequirementsLoading] = useState(false);
+  const [requirementsError, setRequirementsError] = useState<string | null>(null);
+  const [askingRequirement, setAskingRequirement] = useState(false);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -138,6 +156,34 @@ const Solve = () => {
   }, [loading, problemData]);
 
   useEffect(() => {
+    if (!problemData || !isAuthenticated) {
+      setRequirementTurns([]);
+      setRequirementItems([]);
+      setRequirementsError(null);
+      setRequirementsLoading(false);
+      return;
+    }
+
+    const fetchRequirements = async () => {
+      try {
+        setRequirementsLoading(true);
+        setRequirementsError(null);
+        const response = await getRequirements(problemData.problem_group.problem_group_id);
+        setRequirementTurns(response.turn_logs);
+        setRequirementItems(response.requirement_items);
+      } catch (err) {
+        setRequirementsError(
+          err instanceof Error ? err.message : '要件問い合わせ履歴の取得に失敗しました',
+        );
+      } finally {
+        setRequirementsLoading(false);
+      }
+    };
+
+    fetchRequirements();
+  }, [problemData, isAuthenticated]);
+
+  useEffect(() => {
     const hasAnswers = Object.values(answers).some((answer) => answer.trim() !== '');
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -161,6 +207,31 @@ const Solve = () => {
       ...prev,
       [key]: value,
     }));
+  };
+
+  const handleRequirementSubmit = async () => {
+    if (!problemData || !isAuthenticated) return;
+
+    const trimmedQuestion = requirementQuestion.trim();
+    if (!trimmedQuestion) {
+      alert('質問内容を入力してください');
+      return;
+    }
+
+    try {
+      setAskingRequirement(true);
+      setRequirementsError(null);
+      const response = await askRequirementQuestion(problemData.problem_group.problem_group_id, {
+        question: trimmedQuestion,
+      });
+      setRequirementTurns((prev) => [...prev, response.turn]);
+      setRequirementItems((prev) => [...prev, ...response.requirement_items]);
+      setRequirementQuestion('');
+    } catch (err) {
+      setRequirementsError(err instanceof Error ? err.message : '要件問い合わせに失敗しました');
+    } finally {
+      setAskingRequirement(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -264,15 +335,142 @@ const Solve = () => {
           <div className={styles.problemDescription}>
             <p>{problemData.problem_group.description}</p>
           </div>
-          <div className={styles.problemsList}>
-            {problemData.problems.map((problem, index) => (
-              <div key={problem.problem_id} className={styles.problemItem}>
-                <div className={styles.problemTypeLabel}>{formatQuestionLabel(problem, index)}</div>
-                <div className={styles.problemBody}>
-                  <pre>{problem.problem_body}</pre>
-                </div>
+          <div className={styles.tabs}>
+            <button
+              className={`${styles.tab} ${activeTab === 'problems' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('problems')}
+              type="button"
+            >
+              問題一覧
+            </button>
+            <button
+              className={`${styles.tab} ${activeTab === 'inquiry' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('inquiry')}
+              type="button"
+            >
+              要件問い合わせ
+            </button>
+            <button
+              className={`${styles.tab} ${activeTab === 'requirements' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('requirements')}
+              type="button"
+            >
+              確定要件
+            </button>
+          </div>
+          <div className={styles.tabContent}>
+            {activeTab === 'problems' && (
+              <div className={styles.problemsList}>
+                {problemData.problems.map((problem, index) => (
+                  <div key={problem.problem_id} className={styles.problemItem}>
+                    <div className={styles.problemTypeLabel}>
+                      {formatQuestionLabel(problem, index)}
+                    </div>
+                    <div className={styles.problemBody}>
+                      <pre>{problem.problem_body}</pre>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+
+            {activeTab === 'inquiry' && (
+              <div className={styles.inquiryPanel}>
+                {isAuthenticated ? (
+                  <>
+                    <div className={styles.questionComposer}>
+                      <label htmlFor="requirement-question" className={styles.questionLabel}>
+                        要件について質問する
+                      </label>
+                      <div className={styles.questionRow}>
+                        <textarea
+                          id="requirement-question"
+                          className={styles.questionInput}
+                          rows={1}
+                          value={requirementQuestion}
+                          onChange={(event) => setRequirementQuestion(event.target.value)}
+                          placeholder="例: 退会したユーザーの投稿やコメントはどう扱いますか？"
+                          disabled={askingRequirement}
+                        />
+                        <button
+                          className={styles.questionButton}
+                          onClick={handleRequirementSubmit}
+                          disabled={askingRequirement}
+                          type="button"
+                        >
+                          {askingRequirement ? '送信中...' : '質問する'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {requirementsError && (
+                      <p className={styles.requirementError}>{requirementsError}</p>
+                    )}
+
+                    <div className={styles.requirementHistory}>
+                      <h4>回答履歴</h4>
+                      {requirementsLoading ? (
+                        <p className={styles.requirementStatus}>読み込み中...</p>
+                      ) : requirementTurns.length === 0 ? (
+                        <p className={styles.requirementStatus}>
+                          まだ問い合わせはありません。曖昧な点があれば質問してみましょう。
+                        </p>
+                      ) : (
+                        <div className={styles.turnList}>
+                          {requirementTurns.map((turn) => (
+                            <div key={turn.id} className={styles.turnItem}>
+                              <div className={styles.turnQuestion}>
+                                <span className={styles.turnLabel}>Q{turn.turn_no}</span>
+                                <p>{turn.user_question}</p>
+                              </div>
+                              <div className={styles.turnAnswer}>
+                                <span className={styles.turnLabel}>A</span>
+                                <p>{turn.ai_answer}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className={styles.requirementNotice}>
+                    <p>要件問い合わせはログインユーザーのみ利用できます。</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'requirements' && (
+              <div className={styles.requirementsPanel}>
+                {isAuthenticated ? (
+                  requirementsLoading ? (
+                    <p className={styles.requirementStatus}>読み込み中...</p>
+                  ) : requirementsError ? (
+                    <p className={styles.requirementError}>{requirementsError}</p>
+                  ) : requirementItems.length === 0 ? (
+                    <p className={styles.requirementStatus}>
+                      まだ確定した要件はありません。要件問い合わせで明確化するとここに表示されます。
+                    </p>
+                  ) : (
+                    <div className={styles.requirementsList}>
+                      {requirementItems.map((item, index) => (
+                        <div key={item.id} className={styles.requirementItem}>
+                          <div className={styles.requirementItemHeader}>
+                            <span className={styles.requirementIndex}>要件 {index + 1}</span>
+                          </div>
+                          <p>{item.detail_text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div className={styles.requirementNotice}>
+                    <p>確定要件の表示はログインユーザーのみ利用できます。</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className={styles.divider}></div>

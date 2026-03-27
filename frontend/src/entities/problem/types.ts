@@ -14,6 +14,21 @@ export interface ProblemGroup {
   created_at?: string;
 }
 
+export interface RequirementTurn {
+  id: number;
+  turn_no: number;
+  user_question: string;
+  ai_answer: string;
+}
+
+export interface RequirementItem {
+  id: number;
+  subject: string;
+  predicate: string;
+  object_value: string;
+  detail_text: string;
+}
+
 export interface GenerateProblemRequest {
   difficulty: 'easy' | 'medium' | 'hard';
 }
@@ -143,4 +158,18 @@ export interface DashboardData {
   difficulty_stats: Record<'easy' | 'medium' | 'hard', DifficultyStats>;
   streak: StreakData;
   activity_calendar: ActivityCalendarEntry[];
+}
+
+export interface RequirementListResponse {
+  turn_logs: RequirementTurn[];
+  requirement_items: RequirementItem[];
+}
+
+export interface RequirementQuestionRequest {
+  question: string;
+}
+
+export interface RequirementQuestionResponse {
+  turn: RequirementTurn;
+  requirement_items: RequirementItem[];
 }

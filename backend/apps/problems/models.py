@@ -177,6 +177,147 @@ class ModelAnswer(models.Model):
         return f"{self.problem} v{self.version}"
 
 
+class PersonalizedModelAnswer(models.Model):
+    """
+    追加要件を反映した、ユーザー別の模範解答。
+    """
+
+    id = models.BigAutoField(primary_key=True, verbose_name="個別模範解答ID")
+    problem = models.ForeignKey(
+        Problem,
+        on_delete=models.CASCADE,
+        related_name="personalized_model_answers",
+        verbose_name="問題",
+    )
+    problem_group = models.ForeignKey(
+        ProblemGroup,
+        on_delete=models.CASCADE,
+        related_name="personalized_model_answers",
+        verbose_name="問題グループ",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="personalized_model_answers",
+        verbose_name="ユーザー",
+    )
+    version = models.PositiveIntegerField(verbose_name="バージョン")
+    model_answer = models.TextField(verbose_name="模範解答")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        db_table = "personalized_model_answers"
+        verbose_name = "個別模範解答"
+        verbose_name_plural = "個別模範解答"
+        ordering = ["problem", "user", "version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["problem", "problem_group", "user", "version"],
+                name="personalized_model_answers_unique",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.problem} - {self.user.name} v{self.version}"
+
+
+class RequirementTurnLog(models.Model):
+    """
+    要件明確化の質疑応答を、ユーザーごと・題材ごとに記録する原文ログ。
+    """
+
+    id = models.BigAutoField(primary_key=True, verbose_name="要件対話ログID")
+    problem_group = models.ForeignKey(
+        ProblemGroup,
+        on_delete=models.CASCADE,
+        related_name="requirement_turn_logs",
+        verbose_name="問題グループ",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="requirement_turn_logs",
+        verbose_name="ユーザー",
+    )
+    user_question = models.TextField(verbose_name="ユーザー質問")
+    ai_answer = models.TextField(verbose_name="AI回答")
+    turn_no = models.PositiveIntegerField(verbose_name="ターン番号")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        db_table = "requirement_turn_logs"
+        verbose_name = "要件対話ログ"
+        verbose_name_plural = "要件対話ログ"
+        ordering = ["problem_group", "user", "turn_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["problem_group", "user", "turn_no"],
+                name="requirement_turn_logs_group_user_turn_unique",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.problem_group} - {self.user.name} turn {self.turn_no}"
+
+
+class RequirementItem(models.Model):
+    """
+    質疑応答から抽出・正規化した追加要件。
+    """
+
+    id = models.BigAutoField(primary_key=True, verbose_name="追加要件ID")
+    requirement_turn_log = models.ForeignKey(
+        RequirementTurnLog,
+        on_delete=models.CASCADE,
+        related_name="requirement_items",
+        verbose_name="要件対話ログ",
+    )
+    problem_group = models.ForeignKey(
+        ProblemGroup,
+        on_delete=models.CASCADE,
+        related_name="requirement_items",
+        verbose_name="問題グループ",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="requirement_items",
+        verbose_name="ユーザー",
+    )
+    subject = models.CharField(
+        max_length=255,
+        verbose_name="対象",
+        help_text="例: posts, users",
+    )
+    predicate = models.CharField(
+        max_length=255,
+        verbose_name="項目名",
+        help_text="例: delete_policy, max_length",
+    )
+    object_value = models.CharField(
+        max_length=255,
+        verbose_name="決定値",
+        help_text="例: soft_delete",
+    )
+    detail_text = models.TextField(
+        verbose_name="詳細",
+        help_text="追加要件を自然文で表した説明",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        db_table = "requirement_items"
+        verbose_name = "追加要件"
+        verbose_name_plural = "追加要件"
+        ordering = ["problem_group", "user", "requirement_turn_log", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.subject}.{self.predicate}={self.object_value}"
+
+
 class Explanation(models.Model):
     """
     回答に紐づく解説（採点結果と同じバージョンで保持）。

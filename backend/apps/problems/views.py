@@ -4,12 +4,13 @@
 
 import secrets
 from django.db import transaction
+from django.db.models import Max
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.exceptions import (
-    ValidationError,
     GuestLimitReachedError,
     GuestAlreadyGeneratedError,
     GuestSessionNotFoundError,
@@ -17,6 +18,7 @@ from common.exceptions import (
     PermissionDeniedError,
     NotFoundError,
     GradingError,
+    RequirementClarificationError,
 )
 from common.error_codes import ErrorCode
 
@@ -25,11 +27,52 @@ from .services import (
     ProblemGeneratorError,
     AnswerGrader,
     AnswerGraderError,
+    RequirementClarifier,
+    RequirementClarifierError,
 )
-from .models import ProblemGroup, Problem, Answer, Explanation, ModelAnswer
+from .models import (
+    ProblemGroup,
+    Problem,
+    Answer,
+    Explanation,
+    ModelAnswer,
+    PersonalizedModelAnswer,
+    RequirementItem,
+    RequirementTurnLog,
+)
 from .ranking_service import get_ranking, Period, ScoreType
+from .serializers import (
+    CompleteProblemGroupDataSerializer,
+    CompleteProblemGroupRequestSerializer,
+    DashboardDataSerializer,
+    GenerateProblemDataSerializer,
+    GenerateProblemRequestSerializer,
+    GradeResponseDataSerializer,
+    GradeAnswerRequestSerializer,
+    MyProblemGroupsDataSerializer,
+    MyProblemGroupsQuerySerializer,
+    ProblemGroupDetailDataSerializer,
+    ProblemGroupFetchDataSerializer,
+    ProblemGroupQuerySerializer,
+    RequirementListDataSerializer,
+    RequirementQuestionDataSerializer,
+    RequirementQuestionRequestSerializer,
+    RankingQuerySerializer,
+    RankingDataSerializer,
+)
 
-MAX_ANSWER_BODY_LENGTH = 50000
+
+def serialize_data(serializer_class, payload):
+    """レスポンス payload を serializer 経由で整形する."""
+    serializer = serializer_class(payload)
+    return serializer.data
+
+
+def validate_input(serializer_class, data, *, context=None):
+    """入力データを serializer で検証する."""
+    serializer = serializer_class(data=data, context=context or {})
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
 
 
 class GenerateProblemView(APIView):
@@ -88,29 +131,16 @@ class GenerateProblemView(APIView):
                 message="このAPIはバッチ専用です。直接アクセスできません。"
             )
 
-        min_stock = request.data.get("min_stock", 5)
-
-        if not isinstance(min_stock, int) or min_stock < 1:
-            raise ValidationError(message="min_stock は1以上の整数を指定してください")
+        validated_data = validate_input(GenerateProblemRequestSerializer, request.data)
+        min_stock = validated_data["min_stock"]
 
         # リクエストボディから難易度を取得
-        difficulties_param = request.data.get("difficulties")
-        difficulty_param = request.data.get("difficulty")
+        difficulties_param = validated_data.get("difficulties")
+        difficulty_param = validated_data.get("difficulty")
 
         if difficulties_param is not None:
-            if not isinstance(difficulties_param, list):
-                raise ValidationError(message="difficulties は配列で指定してください")
-            valid_difficulties = ["easy", "medium", "hard"]
-            if not all(d in valid_difficulties for d in difficulties_param):
-                raise ValidationError(
-                    message="difficulties の要素は easy, medium, hard のいずれかを指定してください"
-                )
             difficulties = difficulties_param
         elif difficulty_param is not None:
-            if difficulty_param not in ["easy", "medium", "hard"]:
-                raise ValidationError(
-                    message="difficulty は easy, medium, hard のいずれかを指定してください"
-                )
             difficulties = [difficulty_param]
         else:
             # デフォルト：全難易度を処理
@@ -161,10 +191,13 @@ class GenerateProblemView(APIView):
 
         return Response(
             {
-                "data": {
-                    "results": results,
-                    "total_generated": total_generated,
-                },
+                "data": serialize_data(
+                    GenerateProblemDataSerializer,
+                    {
+                        "results": results,
+                        "total_generated": total_generated,
+                    },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -201,12 +234,11 @@ class GetProblemGroupView(APIView):
         import secrets
         from .models import ProblemGroupAttempt
 
-        difficulty = request.query_params.get("difficulty")
-
-        if not difficulty or difficulty not in ["easy", "medium", "hard"]:
-            raise ValidationError(
-                message="difficulty は easy, medium, hard のいずれかを指定してください"
-            )
+        validated_query = validate_input(
+            ProblemGroupQuerySerializer,
+            request.query_params,
+        )
+        difficulty = validated_query["difficulty"]
 
         if request.user.is_authenticated:
             # 既に問題取得済みかチェック
@@ -222,25 +254,28 @@ class GetProblemGroupView(APIView):
 
                     return Response(
                         {
-                            "data": {
-                                "kind": "persisted",
-                                "problem_group": {
-                                    "problem_group_id": problem_group.problem_group_id,
-                                    "title": problem_group.title,
-                                    "description": problem_group.description,
-                                    "difficulty": problem_group.difficulty,
-                                },
-                                "problems": [
-                                    {
-                                        "problem_id": p.problem_id,
+                            "data": serialize_data(
+                                ProblemGroupFetchDataSerializer,
+                                {
+                                    "kind": "persisted",
+                                    "problem_group": {
                                         "problem_group_id": problem_group.problem_group_id,
-                                        "order_index": p.order_index,
-                                        "problem_type": p.problem_type,
-                                        "problem_body": p.problem_body,
-                                    }
-                                    for p in problems
-                                ],
-                            },
+                                        "title": problem_group.title,
+                                        "description": problem_group.description,
+                                        "difficulty": problem_group.difficulty,
+                                    },
+                                    "problems": [
+                                        {
+                                            "problem_id": p.problem_id,
+                                            "problem_group_id": problem_group.problem_group_id,
+                                            "order_index": p.order_index,
+                                            "problem_type": p.problem_type,
+                                            "problem_body": p.problem_body,
+                                        }
+                                        for p in problems
+                                    ],
+                                },
+                            ),
                             "error": None,
                         },
                         status=status.HTTP_200_OK,
@@ -272,25 +307,28 @@ class GetProblemGroupView(APIView):
 
             return Response(
                 {
-                    "data": {
-                        "kind": "persisted",
-                        "problem_group": {
-                            "problem_group_id": problem_group.problem_group_id,
-                            "title": problem_group.title,
-                            "description": problem_group.description,
-                            "difficulty": problem_group.difficulty,
-                        },
-                        "problems": [
-                            {
-                                "problem_id": p.problem_id,
+                    "data": serialize_data(
+                        ProblemGroupFetchDataSerializer,
+                        {
+                            "kind": "persisted",
+                            "problem_group": {
                                 "problem_group_id": problem_group.problem_group_id,
-                                "order_index": p.order_index,
-                                "problem_type": p.problem_type,
-                                "problem_body": p.problem_body,
-                            }
-                            for p in problems
-                        ],
-                    },
+                                "title": problem_group.title,
+                                "description": problem_group.description,
+                                "difficulty": problem_group.difficulty,
+                            },
+                            "problems": [
+                                {
+                                    "problem_id": p.problem_id,
+                                    "problem_group_id": problem_group.problem_group_id,
+                                    "order_index": p.order_index,
+                                    "problem_type": p.problem_type,
+                                    "problem_body": p.problem_body,
+                                }
+                                for p in problems
+                            ],
+                        },
+                    ),
                     "error": None,
                 },
                 status=status.HTTP_200_OK,
@@ -328,30 +366,164 @@ class GetProblemGroupView(APIView):
 
             return Response(
                 {
-                    "data": {
-                        "kind": "guest",
-                        "guest_token": guest_token,
-                        "problem_group": {
-                            "problem_group_id": problem_group.problem_group_id,
-                            "title": problem_group.title,
-                            "description": problem_group.description,
-                            "difficulty": problem_group.difficulty,
-                        },
-                        "problems": [
-                            {
-                                "problem_id": p.problem_id,
+                    "data": serialize_data(
+                        ProblemGroupFetchDataSerializer,
+                        {
+                            "kind": "guest",
+                            "guest_token": guest_token,
+                            "problem_group": {
                                 "problem_group_id": problem_group.problem_group_id,
-                                "order_index": p.order_index,
-                                "problem_type": p.problem_type,
-                                "problem_body": p.problem_body,
-                            }
-                            for p in problems
-                        ],
-                    },
+                                "title": problem_group.title,
+                                "description": problem_group.description,
+                                "difficulty": problem_group.difficulty,
+                            },
+                            "problems": [
+                                {
+                                    "problem_id": p.problem_id,
+                                    "problem_group_id": problem_group.problem_group_id,
+                                    "order_index": p.order_index,
+                                    "problem_type": p.problem_type,
+                                    "problem_body": p.problem_body,
+                                }
+                                for p in problems
+                            ],
+                        },
+                    ),
                     "error": None,
                 },
                 status=status.HTTP_200_OK,
             )
+
+
+class RequirementQuestionView(APIView):
+    """
+    POST /api/v1/problem-groups/{problem_group_id}/requirements/questions
+
+    要件明確化の問い合わせを受け付け、原文ログと構造化データを保存する。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, problem_group_id: int):
+        validated_data = validate_input(
+            RequirementQuestionRequestSerializer,
+            request.data,
+        )
+
+        current_pg_id = request.session.get("current_problem_group_id")
+        if current_pg_id != problem_group_id:
+            raise PermissionDeniedError(
+                message="この題材は現在のセッションで進行中ではありません"
+            )
+
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_GROUP_NOT_FOUND,
+                message=f"問題グループID {problem_group_id} が見つかりません",
+            )
+
+        try:
+            clarifier = RequirementClarifier()
+            turn_log, requirement_items = clarifier.clarify(
+                problem_group=problem_group,
+                user=request.user,
+                question=validated_data["question"],
+            )
+        except RequirementClarifierError as e:
+            raise RequirementClarificationError(message=str(e))
+
+        return Response(
+            {
+                "data": serialize_data(
+                    RequirementQuestionDataSerializer,
+                    {
+                        "turn": {
+                            "id": turn_log.id,
+                            "turn_no": turn_log.turn_no,
+                            "user_question": turn_log.user_question,
+                            "ai_answer": turn_log.ai_answer,
+                        },
+                        "requirement_items": [
+                            {
+                                "id": item.id,
+                                "subject": item.subject,
+                                "predicate": item.predicate,
+                                "object_value": item.object_value,
+                                "detail_text": item.detail_text,
+                            }
+                            for item in requirement_items
+                        ],
+                    },
+                ),
+                "error": None,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class RequirementListView(APIView):
+    """
+    GET /api/v1/problem-groups/{problem_group_id}/requirements
+
+    指定題材に対するログインユーザーの要件問い合わせ履歴を返す。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, problem_group_id: int):
+        try:
+            problem_group = ProblemGroup.objects.get(problem_group_id=problem_group_id)
+        except ProblemGroup.DoesNotExist:
+            raise NotFoundError(
+                error_code=ErrorCode.PROBLEM_GROUP_NOT_FOUND,
+                message=f"問題グループID {problem_group_id} が見つかりません",
+            )
+
+        turn_logs = list(
+            RequirementTurnLog.objects.filter(
+                problem_group=problem_group,
+                user=request.user,
+            ).order_by("turn_no")
+        )
+        requirement_items = list(
+            RequirementItem.objects.filter(
+                problem_group=problem_group,
+                user=request.user,
+            ).order_by("id")
+        )
+
+        return Response(
+            {
+                "data": serialize_data(
+                    RequirementListDataSerializer,
+                    {
+                        "turn_logs": [
+                            {
+                                "id": turn.id,
+                                "turn_no": turn.turn_no,
+                                "user_question": turn.user_question,
+                                "ai_answer": turn.ai_answer,
+                            }
+                            for turn in turn_logs
+                        ],
+                        "requirement_items": [
+                            {
+                                "id": item.id,
+                                "subject": item.subject,
+                                "predicate": item.predicate,
+                                "object_value": item.object_value,
+                                "detail_text": item.detail_text,
+                            }
+                            for item in requirement_items
+                        ],
+                    },
+                ),
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class GradeAnswerView(APIView):
@@ -364,6 +536,61 @@ class GradeAnswerView(APIView):
     """
 
     GRADE_DISPLAY_MAP = {0: "×", 1: "△", 2: "○"}
+
+    @staticmethod
+    def _build_requirement_section(requirement_items: list[RequirementItem]) -> str:
+        """採点用に追加要件セクションを組み立てる."""
+        if not requirement_items:
+            return ""
+
+        requirement_lines = []
+        for item in requirement_items:
+            requirement_lines.append(
+                (
+                    f"- {item.detail_text} "
+                    f"(subject={item.subject}, predicate={item.predicate}, "
+                    f"object_value={item.object_value})"
+                )
+            )
+
+        return "\n\n## 追加要件\n" + "\n".join(requirement_lines)
+
+    @classmethod
+    def _build_grading_problem_body(
+        cls, problem: Problem, requirement_items: list[RequirementItem]
+    ) -> str:
+        """問題文と追加要件を結合し、採点AIへ渡す本文を組み立てる."""
+        return problem.problem_body + cls._build_requirement_section(requirement_items)
+
+    @staticmethod
+    def _save_personalized_model_answer(
+        *,
+        problem: Problem,
+        problem_group: ProblemGroup,
+        user,
+        model_answer: str,
+    ) -> PersonalizedModelAnswer:
+        """採点時に生成された個別模範解答を version 管理で保存する."""
+        locked_problem = Problem.objects.select_for_update().get(
+            problem_id=problem.problem_id
+        )
+
+        next_version = (
+            PersonalizedModelAnswer.objects.filter(
+                problem=locked_problem,
+                problem_group=problem_group,
+                user=user,
+            ).aggregate(max_version=Max("version"))["max_version"]
+            or 0
+        ) + 1
+
+        return PersonalizedModelAnswer.objects.create(
+            problem=locked_problem,
+            problem_group=problem_group,
+            user=user,
+            version=next_version,
+            model_answer=model_answer,
+        )
 
     def post(self, request):
         """
@@ -405,85 +632,24 @@ class GradeAnswerView(APIView):
                 "error": null
             }
         """
-        problem_group_id = request.data.get("problem_group_id")
-        guest_token = request.data.get("guest_token")
-        answers = request.data.get("answers")
+        validated_data = validate_input(
+            GradeAnswerRequestSerializer,
+            request.data,
+            context={"request": request},
+        )
+        problem_group_id = validated_data.get("problem_group_id")
+        guest_token = validated_data.get("guest_token")
+        answers = validated_data["answers"]
 
-        if not answers or not isinstance(answers, list) or len(answers) == 0:
-            raise ValidationError(message="answers は1件以上の配列である必要があります")
+        if not request.user.is_authenticated and request.session.get("guest_completed"):
+            raise GuestLimitReachedError(
+                message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
+            )
 
-        # XOR入力ルールチェック（problem_group_id と guest_token は排他）
-        is_authenticated = request.user.is_authenticated
-        has_problem_group_id = problem_group_id is not None
-        has_guest_token = guest_token is not None
-
-        if is_authenticated:
-            if not has_problem_group_id:
-                raise ValidationError(
-                    message="ログインユーザーは problem_group_id が必須です"
-                )
-            if has_guest_token:
-                raise ValidationError(
-                    message="ログインユーザーは guest_token を指定できません"
-                )
-
-        else:
-            if has_problem_group_id:
-                raise ValidationError(
-                    message="ゲストユーザーは problem_group_id を指定できません"
-                )
-            if not has_guest_token:
-                raise ValidationError(message="ゲストユーザーは guest_token が必須です")
-
-            if request.session.get("guest_completed"):
-                raise GuestLimitReachedError(
-                    message="ゲストユーザーは1問のみ解くことができます。続けるには会員登録してください。"
-                )
-
-        self._validate_answers(answers, is_authenticated)
-
-        if is_authenticated:
+        if request.user.is_authenticated:
             return self._handle_authenticated_user(request, problem_group_id, answers)
 
         return self._handle_guest_user(request, guest_token, answers)
-
-    def _validate_answers(self, answers: list, is_authenticated: bool) -> None:
-        """
-        answers 配列の各要素をバリデーションする
-
-        Args:
-            answers: 回答リスト
-            is_authenticated: ログインユーザーかどうか
-
-        Raises:
-            ValidationError: バリデーションエラー
-        """
-        key_field = "problem_id"
-        seen_keys = set()
-
-        for idx, answer in enumerate(answers):
-            answer_body = answer.get("answer_body")
-            if (
-                not answer_body
-                or not isinstance(answer_body, str)
-                or not answer_body.strip()
-            ):
-                raise ValidationError(message=f"answers[{idx}]: answer_body は必須です")
-
-            if len(answer_body) > MAX_ANSWER_BODY_LENGTH:
-                raise ValidationError(
-                    message=f"answers[{idx}]: 回答は{MAX_ANSWER_BODY_LENGTH}文字以下である必要があります"
-                )
-
-            if answer.get("problem_id") is None:
-                raise ValidationError(message=f"answers[{idx}]: problem_id は必須です")
-
-            key_value = answer.get(key_field)
-            if key_value in seen_keys:
-                raise ValidationError(
-                    message=f"answers[{idx}]: {key_field} が重複しています"
-                )
-            seen_keys.add(key_value)
 
     def _handle_authenticated_user(self, request, problem_group_id: int, answers: list):
         """
@@ -514,12 +680,20 @@ class GradeAnswerView(APIView):
         problems = list(
             Problem.objects.filter(problem_group=problem_group).order_by("order_index")
         )
+        requirement_items = list(
+            RequirementItem.objects.filter(
+                problem_group=problem_group,
+                user=request.user,
+            ).order_by("id")
+        )
 
         problem_map = {p.problem_id: p for p in problems}
 
-        latest_model_answers = ModelAnswer.objects.filter(
-            problem__in=problems
-        ).order_by('problem_id', '-version').distinct('problem_id')
+        latest_model_answers = (
+            ModelAnswer.objects.filter(problem__in=problems)
+            .order_by("problem_id", "-version")
+            .distinct("problem_id")
+        )
         latest_model_answer_map = {ma.problem_id: ma for ma in latest_model_answers}
 
         for answer in answers:
@@ -536,7 +710,10 @@ class GradeAnswerView(APIView):
                 {
                     "order_index": problem.order_index,
                     "problem_type": problem.problem_type,
-                    "problem_body": problem.problem_body,
+                    "problem_body": self._build_grading_problem_body(
+                        problem,
+                        requirement_items,
+                    ),
                     "answer_body": answer["answer_body"],
                     "problem_id": problem.problem_id,
                 }
@@ -569,7 +746,19 @@ class GradeAnswerView(APIView):
                     explanation_body=grading_result["explanation"],
                 )
 
-                model_answer_obj = latest_model_answer_map.get(problem.problem_id)
+                personalized_model_answer = None
+                if requirement_items:
+                    personalized_model_answer = self._save_personalized_model_answer(
+                        problem=problem,
+                        problem_group=problem_group,
+                        user=request.user,
+                        model_answer=grading_result["model_answer"],
+                    )
+
+                model_answer_obj = (
+                    personalized_model_answer
+                    or latest_model_answer_map.get(problem.problem_id)
+                )
                 results.append(
                     {
                         "problem_ref": {
@@ -588,7 +777,9 @@ class GradeAnswerView(APIView):
                         "model_answer": {
                             "version": model_answer_obj.version,
                             "model_answer": model_answer_obj.model_answer,
-                        } if model_answer_obj else None,
+                        }
+                        if model_answer_obj
+                        else None,
                         "answer_id": answer_record.answer_id,
                     }
                 )
@@ -597,7 +788,10 @@ class GradeAnswerView(APIView):
 
         return Response(
             {
-                "data": {"results": results},
+                "data": serialize_data(
+                    GradeResponseDataSerializer,
+                    {"results": results},
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -642,9 +836,11 @@ class GradeAnswerView(APIView):
         )
         problem_map = {p.problem_id: p for p in problems}
 
-        latest_model_answers = ModelAnswer.objects.filter(
-            problem__in=problems
-        ).order_by('problem_id', '-version').distinct('problem_id')
+        latest_model_answers = (
+            ModelAnswer.objects.filter(problem__in=problems)
+            .order_by("problem_id", "-version")
+            .distinct("problem_id")
+        )
         latest_model_answer_map = {ma.problem_id: ma for ma in latest_model_answers}
 
         for answer in answers:
@@ -698,7 +894,9 @@ class GradeAnswerView(APIView):
                     "model_answer": {
                         "version": model_answer_obj.version,
                         "model_answer": model_answer_obj.model_answer,
-                    } if model_answer_obj else None,
+                    }
+                    if model_answer_obj
+                    else None,
                 }
             )
 
@@ -706,7 +904,10 @@ class GradeAnswerView(APIView):
 
         return Response(
             {
-                "data": {"results": results},
+                "data": serialize_data(
+                    GradeResponseDataSerializer,
+                    {"results": results},
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -750,12 +951,22 @@ class CompleteProblemGroupView(APIView):
             request.session.modified = True
 
             return Response(
-                {"data": {"ok": True}, "error": None}, status=status.HTTP_200_OK
+                {
+                    "data": serialize_data(
+                        CompleteProblemGroupDataSerializer,
+                        {"ok": True},
+                    ),
+                    "error": None,
+                },
+                status=status.HTTP_200_OK,
             )
 
-        guest_token = request.data.get("guest_token")
-        if not guest_token:
-            raise ValidationError(message="guest_token は必須です")
+        validated_data = validate_input(
+            CompleteProblemGroupRequestSerializer,
+            request.data,
+            context={"request": request},
+        )
+        guest_token = validated_data.get("guest_token")
 
         session_token = request.session.get("guest_problem_token")
         if not session_token:
@@ -779,7 +990,14 @@ class CompleteProblemGroupView(APIView):
         request.session.modified = True
 
         return Response(
-            {"data": {"ok": True}, "error": None}, status=status.HTTP_200_OK
+            {
+                "data": serialize_data(
+                    CompleteProblemGroupDataSerializer,
+                    {"ok": True},
+                ),
+                "error": None,
+            },
+            status=status.HTTP_200_OK,
         )
 
 
@@ -831,15 +1049,14 @@ class MyProblemGroupsView(APIView):
                 message="復習機能を利用するにはログインが必要です"
             )
 
-        difficulty = request.query_params.get("difficulty")
+        validated_query = validate_input(
+            MyProblemGroupsQuerySerializer,
+            request.query_params,
+        )
 
         filters = {}
-
+        difficulty = validated_query.get("difficulty")
         if difficulty:
-            if difficulty not in ["easy", "medium", "hard"]:
-                raise ValidationError(
-                    message="difficulty は easy, medium, hard のいずれかを指定してください"
-                )
             filters["difficulty"] = difficulty
 
         from .models import ProblemGroupAttempt
@@ -855,10 +1072,13 @@ class MyProblemGroupsView(APIView):
         if not target_ids:
             return Response(
                 {
-                    "data": {
-                        "items": [],
-                        "next_cursor": None,
-                    },
+                    "data": serialize_data(
+                        MyProblemGroupsDataSerializer,
+                        {
+                            "items": [],
+                            "next_cursor": None,
+                        },
+                    ),
                     "error": None,
                 },
                 status=status.HTTP_200_OK,
@@ -871,11 +1091,8 @@ class MyProblemGroupsView(APIView):
                 problem_group_id__in=list(target_ids), **filters
             )
             .prefetch_related(
-                Prefetch(
-                    "problems",
-                    queryset=Problem.objects.order_by("order_index")
-                ),
-                "attempts"
+                Prefetch("problems", queryset=Problem.objects.order_by("order_index")),
+                "attempts",
             )
             .annotate(attempt_date=Max("attempts__created_at"))
             .order_by("-attempt_date")
@@ -885,28 +1102,25 @@ class MyProblemGroupsView(APIView):
         for pg in problem_groups_with_attempts:
             all_problem_ids_set.update(p.problem_id for p in pg.problems.all())
 
-
         latest_answers = (
             Answer.objects.filter(
-                problem_id__in=list(all_problem_ids_set),
-                user=request.user
+                problem_id__in=list(all_problem_ids_set), user=request.user
             )
-            .order_by('problem_id', '-created_at')
-            .distinct('problem_id')
+            .order_by("problem_id", "-created_at")
+            .distinct("problem_id")
         )
 
         answer_map = {answer.problem_id: answer for answer in latest_answers}
 
         latest_answer_dates = (
             Answer.objects.filter(
-                problem__problem_group_id__in=list(target_ids),
-                user=request.user
+                problem__problem_group_id__in=list(target_ids), user=request.user
             )
-            .values('problem__problem_group_id')
-            .annotate(latest_created_at=Max('created_at'))
+            .values("problem__problem_group_id")
+            .annotate(latest_created_at=Max("created_at"))
         )
         answer_date_map = {
-            item['problem__problem_group_id']: item['latest_created_at']
+            item["problem__problem_group_id"]: item["latest_created_at"]
             for item in latest_answer_dates
         }
 
@@ -948,10 +1162,13 @@ class MyProblemGroupsView(APIView):
 
         return Response(
             {
-                "data": {
-                    "items": items,
-                    "next_cursor": None,
-                },
+                "data": serialize_data(
+                    MyProblemGroupsDataSerializer,
+                    {
+                        "items": items,
+                        "next_cursor": None,
+                    },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -1004,21 +1221,22 @@ class ProblemGroupDetailView(APIView):
 
         problem_ids = [p.problem_id for p in problems]
         all_user_answers = Answer.objects.filter(
-            problem_id__in=problem_ids,
-            user=request.user
-        ).order_by('problem_id', '-created_at')
+            problem_id__in=problem_ids, user=request.user
+        ).order_by("problem_id", "-created_at")
 
         grade_display_map = {0: "×", 1: "△", 2: "○"}
         answers_by_problem = {pid: [] for pid in problem_ids}
 
         for answer in all_user_answers:
-            answers_by_problem[answer.problem_id].append({
-                "answer_id": answer.answer_id,
-                "answer_body": answer.answer_body,
-                "grade": answer.grade,
-                "grade_display": grade_display_map.get(answer.grade, "×"),
-                "created_at": answer.created_at.isoformat(),
-            })
+            answers_by_problem[answer.problem_id].append(
+                {
+                    "answer_id": answer.answer_id,
+                    "answer_body": answer.answer_body,
+                    "grade": answer.grade,
+                    "grade_display": grade_display_map.get(answer.grade, "×"),
+                    "created_at": answer.created_at.isoformat(),
+                }
+            )
 
         from .models import ProblemGroupAttempt
 
@@ -1029,26 +1247,29 @@ class ProblemGroupDetailView(APIView):
 
         return Response(
             {
-                "data": {
-                    "problem_group": {
-                        "problem_group_id": problem_group.problem_group_id,
-                        "title": problem_group.title,
-                        "description": problem_group.description,
-                        "difficulty": problem_group.difficulty,
-                        "created_at": problem_group.created_at.isoformat(),
-                        "completed_at": completed_at,
+                "data": serialize_data(
+                    ProblemGroupDetailDataSerializer,
+                    {
+                        "problem_group": {
+                            "problem_group_id": problem_group.problem_group_id,
+                            "title": problem_group.title,
+                            "description": problem_group.description,
+                            "difficulty": problem_group.difficulty,
+                            "created_at": problem_group.created_at.isoformat(),
+                            "completed_at": completed_at,
+                        },
+                        "problems": [
+                            {
+                                "problem_id": p.problem_id,
+                                "problem_type": p.problem_type,
+                                "order_index": p.order_index,
+                                "problem_body": p.problem_body,
+                            }
+                            for p in problems
+                        ],
+                        "answers": answers_by_problem,
                     },
-                    "problems": [
-                        {
-                            "problem_id": p.problem_id,
-                            "problem_type": p.problem_type,
-                            "order_index": p.order_index,
-                            "problem_body": p.problem_body,
-                        }
-                        for p in problems
-                    ],
-                    "answers": answers_by_problem,
-                },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -1063,9 +1284,6 @@ class RankingView(APIView):
     - 期間（period）とスコア計算方式（score_type）を指定可能
     - 認証不要（誰でも閲覧可能）
     """
-
-    VALID_PERIODS = {"daily", "weekly", "monthly", "all"}
-    VALID_SCORE_TYPES = {"problem_count", "correct_count", "grade_sum"}
 
     def get(self, request):
         """
@@ -1089,28 +1307,13 @@ class RankingView(APIView):
                 "error": null
             }
         """
-        period_str = request.query_params.get("period", "daily")
-        score_type_str = request.query_params.get("score_type", "problem_count")
-        limit_str = request.query_params.get("limit", "5")
-
-        if period_str not in self.VALID_PERIODS:
-            raise ValidationError(
-                message=f"period は {', '.join(self.VALID_PERIODS)} のいずれかを指定してください"
-            )
-
-        if score_type_str not in self.VALID_SCORE_TYPES:
-            raise ValidationError(
-                message=f"score_type は {', '.join(self.VALID_SCORE_TYPES)} のいずれかを指定してください"
-            )
-
-        try:
-            limit = int(limit_str)
-            if limit < 1 or limit > 100:
-                raise ValueError()
-        except ValueError:
-            raise ValidationError(
-                message="limit は 1 から 100 の整数を指定してください"
-            )
+        validated_query = validate_input(
+            RankingQuerySerializer,
+            request.query_params,
+        )
+        period_str = validated_query["period"]
+        score_type_str = validated_query["score_type"]
+        limit = validated_query["limit"]
 
         period = Period(period_str)
         score_type = ScoreType(score_type_str)
@@ -1129,11 +1332,14 @@ class RankingView(APIView):
 
         return Response(
             {
-                "data": {
-                    "period": period_str,
-                    "score_type": score_type_str,
-                    "rankings": rankings_data,
-                },
+                "data": serialize_data(
+                    RankingDataSerializer,
+                    {
+                        "period": period_str,
+                        "score_type": score_type_str,
+                        "rankings": rankings_data,
+                    },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,
@@ -1284,18 +1490,21 @@ class DashboardView(APIView):
 
         return Response(
             {
-                "data": {
-                    "total_problem_groups": answered_problem_groups,
-                    "total_answers": total_answers,
-                    "average_grade": round(avg_grade, 2),
-                    "grade_distribution": grade_distribution,
-                    "difficulty_stats": difficulty_stats,
-                    "streak": {
-                        "current": current_streak,
-                        "longest": longest_streak,
+                "data": serialize_data(
+                    DashboardDataSerializer,
+                    {
+                        "total_problem_groups": answered_problem_groups,
+                        "total_answers": total_answers,
+                        "average_grade": round(avg_grade, 2),
+                        "grade_distribution": grade_distribution,
+                        "difficulty_stats": difficulty_stats,
+                        "streak": {
+                            "current": current_streak,
+                            "longest": longest_streak,
+                        },
+                        "activity_calendar": activity_calendar,
                     },
-                    "activity_calendar": activity_calendar,
-                },
+                ),
                 "error": None,
             },
             status=status.HTTP_200_OK,

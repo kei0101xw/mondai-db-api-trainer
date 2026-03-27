@@ -328,3 +328,21 @@ class GradingError(AppException):
             details=details,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+class RequirementClarificationError(AppException):
+    """要件問い合わせエラー."""
+
+    def __init__(self, message: Optional[str] = None, details: Any = None) -> None:
+        """要件問い合わせエラーを初期化する.
+
+        Args:
+            message: エラーメッセージ
+            details: エラー詳細情報
+        """
+        super().__init__(
+            error_code=ErrorCode.REQUIREMENT_CLARIFICATION_ERROR,
+            message=message,
+            details=details,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
