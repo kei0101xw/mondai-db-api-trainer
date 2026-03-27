@@ -571,9 +571,13 @@ class GradeAnswerView(APIView):
         model_answer: str,
     ) -> PersonalizedModelAnswer:
         """採点時に生成された個別模範解答を version 管理で保存する."""
+        locked_problem = Problem.objects.select_for_update().get(
+            problem_id=problem.problem_id
+        )
+
         next_version = (
             PersonalizedModelAnswer.objects.filter(
-                problem=problem,
+                problem=locked_problem,
                 problem_group=problem_group,
                 user=user,
             ).aggregate(max_version=Max("version"))["max_version"]
@@ -581,7 +585,7 @@ class GradeAnswerView(APIView):
         ) + 1
 
         return PersonalizedModelAnswer.objects.create(
-            problem=problem,
+            problem=locked_problem,
             problem_group=problem_group,
             user=user,
             version=next_version,

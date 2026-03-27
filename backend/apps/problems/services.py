@@ -736,15 +736,22 @@ class RequirementClarifier:
         question: str,
         clarification_result: RequirementClarificationResult,
     ) -> tuple[RequirementTurnLog, list[RequirementItem]]:
+        locked_problem_group = ProblemGroup.objects.select_for_update().get(
+            problem_group_id=problem_group.problem_group_id
+        )
+
         next_turn_no = (
-            RequirementTurnLog.objects.filter(problem_group=problem_group, user=user)
+            RequirementTurnLog.objects.filter(
+                problem_group=locked_problem_group,
+                user=user,
+            )
             .aggregate(max_turn_no=Max("turn_no"))
             .get("max_turn_no")
             or 0
         ) + 1
 
         turn_log = RequirementTurnLog.objects.create(
-            problem_group=problem_group,
+            problem_group=locked_problem_group,
             user=user,
             user_question=question,
             ai_answer=clarification_result["ai_answer"].strip(),
@@ -754,7 +761,7 @@ class RequirementClarifier:
         requirement_items = [
             RequirementItem(
                 requirement_turn_log=turn_log,
-                problem_group=problem_group,
+                problem_group=locked_problem_group,
                 user=user,
                 subject=item["subject"].strip(),
                 predicate=item["predicate"].strip(),
