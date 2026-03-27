@@ -278,6 +278,12 @@ AI による自動採点と解説表示を行う。
 
 - **ユーザープロフィール**
   - 表示名・アイコン・自己紹介などを登録・編集できる画面
+- **要件に関する質疑応答機能**
+  - 問題文だけでは判断できない曖昧な要件を、ユーザーが一問一答形式で AI に質問できる。
+  - AI は、元の問題文に加えて、その題材についてこれまでに行われた質疑応答と、そこで確定した追加要件を参照して回答する。
+  - 質疑応答の結果は、単なるチャットログとして保持するだけでなく、後続の採点や模範解答生成で使えるように構造化データとしても保持する。
+  - この機能はログインユーザー向けを主対象とし、`problem_group_id` と `user_id` に紐づく形で管理する。
+  - 問題生成時に作られた元の `model_answers` は維持し、追加要件を踏まえたユーザー別の模範解答は別テーブルで管理する。
 - **復習画面（マイ問題一覧）**
   - ログインユーザーが過去に解いた問題の一覧
   - 各問題ごとに「問題文」「自分の回答」「採点結果」「模範解答・解説」を確認できる。
@@ -360,6 +366,43 @@ AI による自動採点と解説表示を行う。
 - problem_id (PK, FK → problems.problem_id)
 - version (PK)
 - model_answer
+- created_at
+- updated_at
+
+### personalized_model_answers（追加要件を反映したユーザー別模範解答）
+
+- id (PK)
+- problem_id (FK → problems.problem_id)
+- problem_group_id (FK → problem_groups.problem_group_id)
+- user_id (FK → users.user_id)
+- version
+- model_answer
+- created_at
+- updated_at
+- UNIQUE(problem_id, problem_group_id, user_id, version)
+
+### requirement_turn_logs（要件に関する質疑応答の原文ログ）
+
+- id (PK)
+- problem_group_id (FK → problem_groups.problem_group_id)
+- user_id (FK → users.user_id)
+- user_question
+- ai_answer
+- turn_no
+- created_at
+- updated_at
+- UNIQUE(problem_group_id, user_id, turn_no)
+
+### requirement_items（質疑応答から正規化した追加要件）
+
+- id (PK)
+- requirement_turn_log_id (FK → requirement_turn_logs.id)
+- problem_group_id (FK → problem_groups.problem_group_id)
+- user_id (FK → users.user_id)
+- subject
+- predicate
+- object_value
+- detail_text
 - created_at
 - updated_at
 
@@ -802,13 +845,92 @@ AI による自動採点と解説表示を行う。
 
 ---
 
-### 7.5 採点・解説（〇 ×△）
+### 7.5 要件に関する質疑応答（追加機能）
+
+#### POST `/api/v1/problem-groups/{problem_group_id}/requirements/questions`
+
+- 用途：問題文だけでは判断できない曖昧な要件について、ユーザーが AI に一問一答形式で質問する。
+- 認証：必要
+- 振る舞い：
+  - AI は、対象の `problem_group` の問題文、当該ユーザーの過去の `requirement_turn_logs`、および `requirement_items` を参照して回答する。
+  - 回答後、原文の質問・回答を `requirement_turn_logs` に保存する。
+  - さらに、採点や追加模範解答生成で再利用できるよう、必要に応じて追加要件を `requirement_items` として構造化保存する。
+  - 同じ `problem_group_id` でも、追加要件はユーザーごとに独立して管理する。
+- Request
+
+```json
+{
+  "question": "退会したユーザーの投稿は物理削除ですか？論理削除ですか？"
+}
+```
+
+- Response（200）
+
+```json
+{
+  "data": {
+    "turn": {
+      "id": 10,
+      "turn_no": 3,
+      "user_question": "退会したユーザーの投稿は物理削除ですか？論理削除ですか？",
+      "ai_answer": "投稿は論理削除とし、公開一覧には表示しない前提とします。"
+    },
+    "requirement_items": [
+      {
+        "id": 21,
+        "subject": "posts",
+        "predicate": "delete_policy",
+        "object_value": "soft_delete",
+        "detail_text": "投稿は論理削除とし、公開一覧には表示しない"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+#### GET `/api/v1/problem-groups/{problem_group_id}/requirements`
+
+- 用途：ある題材に対して、当該ユーザーがこれまでの質疑応答で確定させた追加要件一覧を取得する。
+- 認証：必要
+- Response（200）
+
+```json
+{
+  "data": {
+    "turn_logs": [
+      {
+        "id": 10,
+        "turn_no": 3,
+        "user_question": "...",
+        "ai_answer": "..."
+      }
+    ],
+    "requirement_items": [
+      {
+        "id": 21,
+        "subject": "posts",
+        "predicate": "delete_policy",
+        "object_value": "soft_delete",
+        "detail_text": "投稿は論理削除とし、公開一覧には表示しない"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+---
+
+### 7.6 採点・解説（〇 ×△）
 
 > 生成と同様に、ログイン/ゲストを **同一エンドポイントで分岐**する。
 
 #### POST `/api/v1/grade`
 
 - 用途：小問（problem）ごとの解答を提出し、AI 採点（〇 ×△）とユーザー回答に合わせた解説、および模範解答を返す
+- 採点は、元の問題文だけでなく、質疑応答で確定した追加要件（`requirement_items`）も加味して行う。
+- ログインユーザーについては、必要に応じて追加要件を反映したユーザー別模範解答を生成し、`personalized_model_answers` に保存した上で返す。
 
 - 認証：
 
@@ -873,7 +995,15 @@ AI による自動採点と解説表示を行う。
         "model_answer": {
           "version": 1,
           "model_answer": "CREATE TABLE users (...); ..."
-        }
+        },
+        "applied_requirements": [
+          {
+            "subject": "posts",
+            "predicate": "delete_policy",
+            "object_value": "soft_delete",
+            "detail_text": "投稿は論理削除とし、公開一覧には表示しない"
+          }
+        ]
       },
       {
         "problem_ref": { "problem_id": 2, "order_index": 2 },
@@ -885,7 +1015,7 @@ AI による自動採点と解説表示を行う。
           "explanation_body": "..."
         },
         "model_answer": {
-          "version": 1,
+          "version": 2,
           "model_answer": "def create_post(...): ..."
         }
       }
@@ -895,7 +1025,7 @@ AI による自動採点と解説表示を行う。
 }
 ```
 
-### 7.6 問題終了（完了ボタン）
+### 7.7 問題終了（完了ボタン）
 
 > 採点結果を確認した後、フロントの「問題終了」ボタンから呼ばれる API。
 
@@ -928,7 +1058,7 @@ AI による自動採点と解説表示を行う。
 
 ---
 
-### 7.7 復習（追加機能：MVP 外だが API の形は想定）
+### 7.8 復習（追加機能：MVP 外だが API の形は想定）
 
 #### GET `/api/v1/problem-groups/mine`
 
@@ -990,9 +1120,11 @@ AI による自動採点と解説表示を行う。
     - 難易度・モード選択 → 「問題を生成」ボタン
   - 問題解答画面
     - 問題文表示
+    - 要件に関する質疑応答 UI（追加機能）
     - DB 設計／API 設計の回答フォーム
   - 採点結果画面
     - スコア
+    - 採点時に参照された追加要件
     - 模範解答
     - 解説
 - ログイン／ゲストは、同じ UI フローで扱います（見た目はほぼ同じ）。

@@ -8,6 +8,18 @@ urlpatterns = [
     path("generate", views.GenerateProblemView.as_view(), name="generate"),
     # 新規問題取得
     path("", views.GetProblemGroupView.as_view(), name="get_problem_group"),
+    # 要件問い合わせ履歴
+    path(
+        "<int:problem_group_id>/requirements",
+        views.RequirementListView.as_view(),
+        name="requirements",
+    ),
+    # 要件問い合わせ
+    path(
+        "<int:problem_group_id>/requirements/questions",
+        views.RequirementQuestionView.as_view(),
+        name="requirement_question",
+    ),
     # 復習（自分の問題一覧）
     path("mine", views.MyProblemGroupsView.as_view(), name="mine"),
     # 特定問題詳細
